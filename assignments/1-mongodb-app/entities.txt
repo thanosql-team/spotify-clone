@@ -1,0 +1,39 @@
+User
+	userID
+	Name
+	Surname
+	Nickname
+	Phone Number
+	Email
+	Country (IP?)
+	[Playlists]
+		playlistID or whole Playlist entity? 
+	[Saved Albums]
+		albumID or whole Album entity?
+Song
+	songID
+	ReleaseYear
+	Genre
+	Duration
+	Name
+	Artist
+	Album
+	albumID
+	Price?
+Album	
+	albumID
+	ReleaseYear
+	Artist
+	Name
+	Songs
+		songID or whole Song entity?
+Playlist
+	playlistID
+	userID
+	Name
+	SongCount
+	Songs
+		songID or whole Song entity?
+		
+
+
