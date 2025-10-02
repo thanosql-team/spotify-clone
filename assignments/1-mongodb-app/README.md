@@ -14,3 +14,7 @@ Programa turi būti prasminga ir įgyvendinti funkcionalumą laikydamasi šių p
 2. Duomenų gali būti daug, taigi modelis ir sprendimai turi į tai atsižvelgti.
 
 ! UŽDUOTIS įkelia komandos kapitonas !
+
+## Setting up environment
+
+1. Follow https://docs.astral.sh/uv/getting-started/ to install and get introduced to **uv** - a Python package and project manager
