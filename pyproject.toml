@@ -1,4 +1,0 @@
-[tool.ruff]
-# Set the maximum line length
-line-length = 88
-
