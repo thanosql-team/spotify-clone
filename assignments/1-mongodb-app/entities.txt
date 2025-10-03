@@ -25,12 +25,12 @@ Album
 	ReleaseYear
 	Artist
 	Name
-	Songs
+	[Songs]
 		songID or whole Song entity?
 Playlist
 	playlistID
 	userID
 	Name
 	SongCount
-	Songs
+	[Songs]
 		songID or whole Song entity?
