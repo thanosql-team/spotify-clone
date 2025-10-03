@@ -13,6 +13,8 @@ import asyncio
 from pymongo import AsyncMongoClient
 from pymongo import ReturnDocument
 
+app = FastAPI()
+
 # IMPORTANT: set a MONGODB_URL environment variable with value as your connection string to MongoDB
 client = AsyncMongoClient(os.environ["MONGODB_URL"]) #,server_api=pymongo.server_api.ServerApi(version="1", strict=True,deprecation_errors=True))
 db = client.get_database("spotify-clone")
