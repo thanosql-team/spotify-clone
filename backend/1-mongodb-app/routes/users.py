@@ -27,7 +27,7 @@ class UserModel(BaseModel):
     # The primary key for the UserModel, stored as a str on the instance.
     # This will be aliased to _id when sent to MongoDB,
     # but provided as id in the API requests and responses.
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    id: PyObjectId | None = Field(alias="_id", default=None)
     username: str = Field(...)
     name: str = Field(...)
     surname: str = Field(...)
@@ -49,10 +49,10 @@ class UpdateUserModel(BaseModel):
     """
     A set of optional updates to be made to a document in the database.
     """
-    username: Optional[str] = None
-    name: Optional[str] = None
-    surname: Optional[str] = None
-    email: Optional[EmailStr] = None
+    username: str | None = None
+    name: str | None = None
+    surname: str | None = None
+    email: EmailStr | None = None
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         json_encoders={ObjectId: str},
@@ -68,7 +68,7 @@ class UpdateUserModel(BaseModel):
 
 class UserCollection(BaseModel):
 
-    users: List[UserModel]
+    users: list[UserModel]
 
 @app.post(
     "/users/",

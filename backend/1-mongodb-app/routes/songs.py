@@ -1,5 +1,4 @@
 import os
-from typing import Optional, List
 
 from fastapi import FastAPI, Body, HTTPException, status
 from fastapi.responses import Response
@@ -28,7 +27,7 @@ class SongModel(BaseModel):
     # The primary key for the UserModel, stored as a str on the instance.
     # This will be aliased to _id when sent to MongoDB,
     # but provided as id in the API requests and responses.
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    id: PyObjectId | None = Field(alias="_id", default=None)
     name: str = Field(...)
     artist: str = Field(...)
     genre: str = Field(...)
@@ -59,14 +58,14 @@ class UpdateSongModel(BaseModel):
     """
     A set of optional updates to be made to a document in the database.
     """
-    name: Optional[str] = None
-    artist: Optional[str] = None
-    release_year: Optional[str] = None
-    duration: Optional[str] = None
-    album_name: Optional[str] = None
-    name_ID: Optional[str] = None
-    playlist_name: Optional[str] = None
-    playlist_ID: Optional[str] = None
+    name: str | None = None
+    artist: str | None = None
+    release_year: str | None = None
+    duration: str | None = None
+    album_name: str | None = None
+    album_ID: PyObjectId | None = None
+    playlist_name: str | None = None
+    playlist_ID: PyObjectId | None = None
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         json_encoders={ObjectId: str},
@@ -86,7 +85,7 @@ class UpdateSongModel(BaseModel):
 
 class SongCollection(BaseModel):
 
-    songs: List[SongModel]
+    songs: list[SongModel]
 
 @app.post(
     "/songs/",
@@ -140,7 +139,7 @@ async def show_song(id: str):
     response_model=SongModel,
     response_model_by_alias=False,
 )
-async def update_song(id: str, s: UpdateUserModel = Body(...)):
+async def update_song(id: str, s: UpdateSongModel = Body(...)):
     """
     Update individual fields of an existing song record.
     Only the provided fields will be updated.

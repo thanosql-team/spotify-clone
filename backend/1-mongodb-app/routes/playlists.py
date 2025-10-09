@@ -1,5 +1,4 @@
 import os
-from typing import Optional, List
 
 from fastapi import FastAPI, Body, HTTPException, status
 from fastapi.responses import Response
@@ -28,11 +27,11 @@ class PlaylistModel(BaseModel):
     # The primary key for the PlaylistModel, stored as a str on the instance.
     # This will be aliased to _id when sent to MongoDB,
     # but provided as id in the API requests and responses.
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    user_id: Optional[PyObjectId] = Field(default=None)
+    id: PyObjectId | None = Field(alias="_id", default=None)
+    user_id: PyObjectId | None = Field(default=None)
     playlistname: str = Field(...)
     song_count: int = Field(...)
-    song_ID: List[int] = Field(default_factory=)
+    song_ID: list[int] = Field(default_factory=)
     song_name: str = Field(...)
     song_duration: int = Field(...)
     artist_ID: int = Field(...)
@@ -54,8 +53,8 @@ class UpdatePlaylistModel(BaseModel):
     A set of optional updates to be made to a document in the database.
     """
     
-    playlistname: Optional[str] = None
-    name: Optional[str] = None
+    playlistname: str | None = None
+    name: str | None = None
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         json_encoders={ObjectId: str},
@@ -71,7 +70,7 @@ class UpdatePlaylistModel(BaseModel):
 
 class PlaylistCollection(BaseModel):
 
-    playlists: List[PlaylistModel]
+    playlists: list[PlaylistModel]
 
 @app.post(
     "/playlists/",
