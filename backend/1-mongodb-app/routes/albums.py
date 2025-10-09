@@ -20,9 +20,6 @@ router = APIRouter(
     responses={404: {"description": "Not found"}}
 )
 
-# IMPORTANT: set a MONGODB_URL environment variable with value as your connection string to MongoDB
-client = AsyncMongoClient(os.environ["MONGODB_URL"]) #,server_api=pymongo.server_api.ServerApi(version="1", strict=True,deprecation_errors=True))
-db = client.get_database("spotify-clone")
 user_collection = db.get_collection("users")
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
