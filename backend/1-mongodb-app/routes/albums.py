@@ -19,141 +19,169 @@ router = APIRouter(
     responses={404: {"description": "Not found"}}
 )
 
-user_collection = db.get_collection("users")
+album_collection = db.get_collection("albums")
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
-class UserModel(BaseModel):
+class AlbumModel(BaseModel):
     """
-    Container for a single user record.
+    Container for a single album record.
     """
-    # The primary key for the UserModel, stored as a str on the instance.
-    # This will be aliased to _id when sent to MongoDB,
-    # but provided as id in the API requests and responses.
-    id: PyObjectId | None = Field(alias="_id", default=None)
-    username: str = Field(...)
-    name: str = Field(...)
-    surname: str = Field(...)
-    email: EmailStr = Field(...)
+    id: PyObjectId = Field(alias="_id", default=None)
+    user_id: PyObjectId = Field(default=None, description="Owner of the album")
+    album_name: str = Field(...)
+    artist_name: str = Field(...)
+    release_year: int = Field(...)
+    song_IDs: list[PyObjectId] = Field(default_factory=list)
+    song_names: list[str] = Field(default_factory=list)
+    
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True,
         json_schema_extra={
             "example": {
-                "username": "Baitukas",
-                "name": "Jane",
-                "surname": "Doe",
-                "email": "jdoe@example.com",
+                "user_id": "652e9f3b9b1d8e77a9b5d222",
+                "album_name": "Metallica: Reloaded",
+                "artist_name": "Metallica",
+                "release_year": 2025,
+                "song_IDs": ["652e9f3b9b1d8e77a9b5d333", "652e9f3b9b1d8e77a9b5d334"],
+                "song_names": ["Fuel", "The Memory Remains"]
             }
         },
     )
-    
-class UpdateUserModel(BaseModel):
+
+class UpdateAlbumModel(BaseModel):
     """
     A set of optional updates to be made to a document in the database.
     """
-    username: str | None = None
-    name: str | None = None
-    surname: str | None = None
-    email: EmailStr | None = None
+    user_id: PyObjectId | None = None
+    album_name: str | None = None
+    artist_name: str | None = None
+    genre: str | None = None
+    release_year: int | None = None
+    song_IDs: list[PyObjectId] | None = None
+    song_names: list[str] | None = None
+
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         json_encoders={ObjectId: str},
         json_schema_extra={
             "example": {
-                "username": "Baitukas",
-                "name": "Jane",
-                "surname": "Doe",
-                "email": "jdoe@example.com",
+                "album_name": "Metallica: Reloaded (Remastered)",
+                "artist_name": "Metallica",
+                "genre": "Heavy Metal",
+                "release_year": 2026,
+                "song_IDs": ["652e9f3b9b1d8e77a9b5d333", "652e9f3b9b1d8e77a9b5d334"],
+                "song_names": ["Fuel", "The Memory Remains"]
             }
         },
     )
 
-class UserCollection(BaseModel):
+class AlbumCollection(BaseModel):
 
-    users: list[UserModel]
+    albums: list[AlbumModel]
 
 @router.post(
     "/",
-    response_description="Add new user",
-    response_model=UserModel,
+    response_description="Add new album",
+    response_model=AlbumModel,
     status_code=status.HTTP_201_CREATED,
     response_model_by_alias=False,
 )
-async def create_user(user: UserModel = Body(...)):
+async def create_album(album: AlbumModel = Body(...)):
     """
-    Insert a new user record.
+    Insert a new album record.
     A unique ``id`` will be created and provided in the response.
     """
-    new_user = user.model_dump(by_alias=True, exclude=["id"])
-    result = await user_collection.insert_one(new_user)
-    new_user["_id"] = result.inserted_id
-    return new_user
+    new_album = album.model_dump(by_alias=True, exclude=["id"])
+    
+    if new_album.get("user_id"):
+        new_album["user_id"] = ObjectId(new_album["user_id"])
+    if new_album.get("song_IDs"):
+        new_album["song_IDs"] = [ObjectId(s) for s in new_album["song_IDs"]]
+        
+    result = await album_collection.insert_one(new_album)
+    new_album["_id"] = result.inserted_id
+    return new_album
 
 @router.get(
     "/",
-    response_description="List all users",
-    response_model=UserCollection,
+    response_description="List all Albums",
+    response_model=AlbumCollection,
     response_model_by_alias=False,
 )
-async def list_users():
+async def list_albums():
     """
-    List all the user data in the database.
+    List all the album data in the database.
     The response is unpaginated and limited to 1000 results.
     """
-    return UserCollection(users=await user_collection.find().to_list(1000))
+    return AlbumCollection(albums=await album_collection.find().to_list(1000))
 
 @router.get(
     "/{id}",
-    response_description="Get a single user",
-    response_model=UserModel,
+    response_description="Get a single album",
+    response_model=AlbumModel,
     response_model_by_alias=False,
 )
-async def show_user(id: str):
+async def show_album(id: str):
     """
-    Get the record for a specific user, looked up by id.
+    Get the record for a specific album, looked up by id.
     """
-    if (
-        user := await user_collection.find_one({"_id": ObjectId(id)})
-    ) is not None:
-        return user
-    raise HTTPException(status_code=404, detail="User {id} not found")
+    album = await album_collection.find_one({"_id": ObjectId(id)})
+    if album is None:
+        raise HTTPException(status_code=404, detail=f"Album {id} not found")
+
+    # Convert ObjectIds to strings
+    album["_id"] = str(album["_id"])
+    if "user_id" in album and album["user_id"]:
+        album["user_id"] = str(album["user_id"])
+    if "song_IDs" in album:
+        album["song_IDs"] = [str(s) for s in album["song_IDs"]]
+
+    return album
 
 @router.put(
     "/{id}",
-    response_description="Update a user",
-    response_model=UserModel,
+    response_description="Update an album",
+    response_model=AlbumModel,
     response_model_by_alias=False,
 )
-async def update_user(id: str, user: UpdateUserModel = Body(...)):
+async def update_album(id: str, album: UpdateAlbumModel = Body(...)):
     """
-    Update individual fields of an existing user record.
+    Update individual fields of an existing album record.
     Only the provided fields will be updated.
     Any missing or `null` fields will be ignored.
     """
-    user = {
-        k: v for k, v in user.model_dump(by_alias=True).items() if v is not None
+    album = {
+        k: v for k, v in album.model_dump(by_alias=True).items() if v is not None
     }
-    if len(user) >= 1:
-        update_result = await user_collection.find_one_and_update(
+    
+    # Convert linked IDs
+    if "user_id" in album:
+        album["user_id"] = ObjectId(album["user_id"])
+    if "song_IDs" in album:
+        album["song_IDs"] = [ObjectId(s) for s in album["song_IDs"]]
+
+    if len(album) >= 1:
+        update_result = await album_collection.find_one_and_update(
             {"_id": ObjectId(id)},
-            {"$set": user},
+            {"$set": album},
             return_document=ReturnDocument.AFTER,
         )
         if update_result is not None:
             return update_result
         else:
-            raise HTTPException(status_code=404, detail=f"User {id} not found")
+            raise HTTPException(status_code=404, detail=f"Album {id} not found")
     # The update is empty, so return the matching document:
-    if (existing_user := await user_collection.find_one({"_id": ObjectId(id)})) is not None:
-        return existing_user
-    raise HTTPException(status_code=404, detail=f"User {id} not found")
+    if (existing_album := await album_collection.find_one({"_id": ObjectId(id)})) is not None:
+        return existing_album
+    raise HTTPException(status_code=404, detail=f"Album {id} not found")
 
-@router.delete("/{id}", response_description="Delete a User")
-async def delete_user(id: str):
+@router.delete("/{id}", response_description="Delete an Album")
+async def delete_album(id: str):
     """
-    Remove a single user record from the database.
+    Remove a single album record from the database.
     """
-    delete_result = await user_collection.delete_one({"_id": ObjectId(id)})
+    delete_result = await album_collection.delete_one({"_id": ObjectId(id)})
     if delete_result.deleted_count == 1:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-    raise HTTPException(status_code=404, detail=f"User {id} not found")
+    raise HTTPException(status_code=404, detail=f"Album {id} not found")

@@ -26,26 +26,29 @@ class PlaylistModel(BaseModel):
     """
     Container for a single playlist record.
     """
-    # The primary key for the PlaylistModel, stored as a str on the instance.
-    # This will be aliased to _id when sent to MongoDB,
-    # but provided as id in the API requests and responses.
     id: PyObjectId | None = Field(alias="_id", default=None)
     user_id: PyObjectId | None = Field(default=None)
     playlistname: str = Field(...)
     song_count: int = Field(...)
-    song_ID: list[int] = Field(default_factory=)
-    song_name: str = Field(...)
-    song_duration: int = Field(...)
-    artist_ID: int = Field(...)
-    artist_name: str = Field(...)
+    song_ID: list[PyObjectId] = Field(default_factory=list)
+    song_name: list[str] = Field(default_factory=list)
+    song_duration: list[int] = Field(default_factory=list)
+    artist_ID: list[PyObjectId] = Field(default_factory=list)
+    artist_name: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True,
         json_schema_extra={
             "example": {
+                "user_id": "652e9f3b9b1d8e77a9b5d222",
                 "playlistname": "Baitukas",
-                "song_count": "67",
+                "song_count": 67,
+                "song_ID": ["652e9f3b9b1d8e77a9b5d223", "652e9f3b9b1d8e77a9b5d224"],
+                "artist_ID": ["652e9f3b9b1d8e77a9b5d111"],
+                "song_name": ["Track 1", "Track 2"],
+                "song_duration": [210, 185],
+                "artist_name": ["Artist One"]
             }
         },
     )
@@ -54,21 +57,32 @@ class UpdatePlaylistModel(BaseModel):
     """
     A set of optional updates to be made to a document in the database.
     """
-    
+    user_id: PyObjectId | None = None
     playlistname: str | None = None
-    name: str | None = None
+    song_count: int | None = None
+    song_ID: list[PyObjectId] | None = None
+    song_name: list[str] | None = None
+    song_duration: list[int] | None = None
+    artist_ID: list[PyObjectId] | None = None
+    artist_name: list[str] | None = None
+
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         json_encoders={ObjectId: str},
         json_schema_extra={
             "example": {
+                "user_id": "652e9f3b9b1d8e77a9b5d222",
                 "playlistname": "Baitukas",
-                "name": "Jane",
-                "surname": "Doe",
-                "email": "jdoe@example.com",
+                "song_count": 68,
+                "song_ID": ["652e9f3b9b1d8e77a9b5d223", "652e9f3b9b1d8e77a9b5d224"],
+                "artist_ID": ["652e9f3b9b1d8e77a9b5d111"],
+                "song_name": ["Track 1", "Track 2"],
+                "song_duration": [210, 185],
+                "artist_name": ["Artist One"]
             }
         },
     )
+
 
 class PlaylistCollection(BaseModel):
 
@@ -87,6 +101,15 @@ async def create_playlist(playlist: PlaylistModel = Body(...)):
     A unique ``id`` will be created and provided in the response.
     """
     new_playlist = playlist.model_dump(by_alias=True, exclude=["id"])
+    
+    # Convert linked ID fields to ObjectIds
+    if new_playlist.get("user_id"):
+        new_playlist["user_id"] = ObjectId(new_playlist["user_id"])
+    if new_playlist.get("song_ID"):
+        new_playlist["song_ID"] = [ObjectId(s) for s in new_playlist["song_ID"]]
+    if new_playlist.get("artist_ID"):
+        new_playlist["artist_ID"] = [ObjectId(a) for a in new_playlist["artist_ID"]]
+
     result = await playlist_collection.insert_one(new_playlist)
     new_playlist["_id"] = result.inserted_id
     return new_playlist
@@ -114,11 +137,20 @@ async def show_playlist(id: str):
     """
     Get the record for a specific playlist, looked up by id.
     """
-    if (
-        playlist := await playlist_collection.find_one({"_id": ObjectId(id)})
-    ) is not None:
-        return playlist
-    raise HTTPException(status_code=404, detail="Playlist {id} not found")
+    playlist = await playlist_collection.find_one({"_id": ObjectId(id)})
+    if playlist is None:
+        raise HTTPException(status_code=404, detail=f"Playlist {id} not found")
+
+    # Convert ObjectIds to strings
+    playlist["_id"] = str(playlist["_id"])
+    if "user_id" in playlist:
+        playlist["user_id"] = str(playlist["user_id"])
+    if "song_ID" in playlist:
+        playlist["song_ID"] = [str(s) for s in playlist["song_ID"]]
+    if "artist_ID" in playlist:
+        playlist["artist_ID"] = [str(a) for a in playlist["artist_ID"]]
+
+    return playlist
 
 @router.put(
     "/{id}",
@@ -135,6 +167,15 @@ async def update_playlist(id: str, playlist: UpdatePlaylistModel = Body(...)):
     playlist = {
         k: v for k, v in playlist.model_dump(by_alias=True).items() if v is not None
     }
+    
+    # Convert IDs to ObjectId before updating
+    if "user_id" in playlist:
+        playlist["user_id"] = ObjectId(playlist["user_id"])
+    if "song_ID" in playlist:
+        playlist["song_ID"] = [ObjectId(s) for s in playlist["song_ID"]]
+    if "artist_ID" in playlist:
+        playlist["artist_ID"] = [ObjectId(a) for a in playlist["artist_ID"]]
+        
     if len(playlist) >= 1:
         update_result = await playlist_collection.find_one_and_update(
             {"_id": ObjectId(id)},
