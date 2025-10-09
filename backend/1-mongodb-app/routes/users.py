@@ -1,5 +1,4 @@
 import os
-from typing import Optional, List
 
 from fastapi import FastAPI, Body, HTTPException, status
 from fastapi.responses import Response
