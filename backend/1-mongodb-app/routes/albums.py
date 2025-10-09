@@ -2,7 +2,7 @@
 
 import os
 
-from fastapi import FastAPI, Body, HTTPException, status
+from fastapi import APIRouter, Body, HTTPException, status
 from fastapi.responses import Response
 from pydantic import ConfigDict, BaseModel, Field, EmailStr
 from pydantic.functional_validators import BeforeValidator
@@ -14,7 +14,11 @@ import asyncio
 from pymongo import AsyncMongoClient
 from pymongo import ReturnDocument
 
-app = FastAPI()
+router = APIRouter(
+    prefix="/albums",
+    tags=["albums"],
+    responses={404: {"description": "Not found"}}
+)
 
 # IMPORTANT: set a MONGODB_URL environment variable with value as your connection string to MongoDB
 client = AsyncMongoClient(os.environ["MONGODB_URL"]) #,server_api=pymongo.server_api.ServerApi(version="1", strict=True,deprecation_errors=True))
@@ -72,8 +76,8 @@ class UserCollection(BaseModel):
 
     users: list[UserModel]
 
-@app.post(
-    "/users/",
+@router.post(
+    "/",
     response_description="Add new user",
     response_model=UserModel,
     status_code=status.HTTP_201_CREATED,
@@ -89,8 +93,8 @@ async def create_user(user: UserModel = Body(...)):
     new_user["_id"] = result.inserted_id
     return new_user
 
-@app.get(
-    "/users/",
+@router.get(
+    "/",
     response_description="List all users",
     response_model=UserCollection,
     response_model_by_alias=False,
@@ -102,8 +106,8 @@ async def list_users():
     """
     return UserCollection(users=await user_collection.find().to_list(1000))
 
-@app.get(
-    "/users/{id}",
+@router.get(
+    "/{id}",
     response_description="Get a single user",
     response_model=UserModel,
     response_model_by_alias=False,
@@ -118,8 +122,8 @@ async def show_user(id: str):
         return user
     raise HTTPException(status_code=404, detail="User {id} not found")
 
-@app.put(
-    "/users/{id}",
+@router.put(
+    "/{id}",
     response_description="Update a user",
     response_model=UserModel,
     response_model_by_alias=False,
@@ -148,7 +152,7 @@ async def update_user(id: str, user: UpdateUserModel = Body(...)):
         return existing_user
     raise HTTPException(status_code=404, detail=f"User {id} not found")
 
-@app.delete("/users/{id}", response_description="Delete a User")
+@router.delete("/{id}", response_description="Delete a User")
 async def delete_user(id: str):
     """
     Remove a single user record from the database.

@@ -1,6 +1,6 @@
 import os
 
-from fastapi import FastAPI, Body, HTTPException, status
+from fastapi import APIRouter, Body, HTTPException, status
 from fastapi.responses import Response
 from pydantic import ConfigDict, BaseModel, Field, EmailStr
 from pydantic.functional_validators import BeforeValidator
@@ -12,7 +12,11 @@ import asyncio
 from pymongo import AsyncMongoClient
 from pymongo import ReturnDocument
 
-app = FastAPI()
+router = APIRouter(
+    prefix="/songs",
+    tags=["songs"],
+    responses={404: {"description": "Not found"}}
+)
 
 # IMPORTANT: set a MONGODB_URL environment variable with value as your connection string to MongoDB
 client = AsyncMongoClient(os.environ["MONGODB_URL"]) #,server_api=pymongo.server_api.ServerApi(version="1", strict=True,deprecation_errors=True))
@@ -87,8 +91,8 @@ class SongCollection(BaseModel):
 
     songs: list[SongModel]
 
-@app.post(
-    "/songs/",
+@router.post(
+    "/",
     response_description="Add new song",
     response_model=SongModel,
     status_code=status.HTTP_201_CREATED,
@@ -104,8 +108,8 @@ async def create_song(song: SongModel = Body(...)):
     new_song["_id"] = result.inserted_id
     return new_song
 
-@app.get(
-    "/songs/",
+@router.get(
+    "/",
     response_description="List all songs",
     response_model=SongCollection,
     response_model_by_alias=False,
@@ -117,8 +121,8 @@ async def list_songs():
     """
     return SongCollection(songs=await song_collection.find().to_list(1000))
 
-@app.get(
-    "/songs/{id}",
+@router.get(
+    "/{id}",
     response_description="Get a single song",
     response_model=SongModel,
     response_model_by_alias=False,
@@ -133,8 +137,8 @@ async def show_song(id: str):
         return song
     raise HTTPException(status_code=404, detail="Song {id} not found")
 
-@app.put(
-    "/songs/{id}",
+@router.put(
+    "/{id}",
     response_description="Update a song",
     response_model=SongModel,
     response_model_by_alias=False,
@@ -163,7 +167,7 @@ async def update_song(id: str, s: UpdateSongModel = Body(...)):
         return existing_song
     raise HTTPException(status_code=404, detail=f"Song {id} not found")
 
-@app.delete("/songs/{id}", response_description="Delete a Song")
+@router.delete("/{id}", response_description="Delete a Song")
 async def delete_song(id: str):
     """
     Remove a single song record from the database.

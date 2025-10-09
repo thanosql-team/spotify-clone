@@ -1,6 +1,6 @@
 import os
 
-from fastapi import FastAPI, Body, HTTPException, status
+from fastapi import APIRouter, Body, HTTPException, status
 from fastapi.responses import Response
 from pydantic import ConfigDict, BaseModel, Field, EmailStr
 from pydantic.functional_validators import BeforeValidator
@@ -12,7 +12,11 @@ import asyncio
 from pymongo import AsyncMongoClient
 from pymongo import ReturnDocument
 
-app = FastAPI()
+router = APIRouter(
+    prefix="/playlists",
+    tags=["playlists"],
+    responses={404: {"description": "Not found"}}
+)
 
 # IMPORTANT: set a MONGODB_URL environment variable with value as your connection string to MongoDB
 client = AsyncMongoClient(os.environ["MONGODB_URL"]) #,server_api=pymongo.server_api.ServerApi(version="1", strict=True,deprecation_errors=True))
@@ -72,8 +76,8 @@ class PlaylistCollection(BaseModel):
 
     playlists: list[PlaylistModel]
 
-@app.post(
-    "/playlists/",
+@router.post(
+    "/",
     response_description="Add new playlist",
     response_model=PlaylistModel,
     status_code=status.HTTP_201_CREATED,
@@ -89,8 +93,8 @@ async def create_playlist(playlist: PlaylistModel = Body(...)):
     new_playlist["_id"] = result.inserted_id
     return new_playlist
 
-@app.get(
-    "/playlists/",
+@router.get(
+    "/",
     response_description="List all playlists",
     response_model=PlaylistCollection,
     response_model_by_alias=False,
@@ -102,8 +106,8 @@ async def list_playlists():
     """
     return PlaylistCollection(playlists=await playlist_collection.find().to_list(1000))
 
-@app.get(
-    "/playlists/{id}",
+@router.get(
+    "/{id}",
     response_description="Get a single playlist",
     response_model=PlaylistModel,
     response_model_by_alias=False,
@@ -118,8 +122,8 @@ async def show_playlist(id: str):
         return playlist
     raise HTTPException(status_code=404, detail="Playlist {id} not found")
 
-@app.put(
-    "/playlists/{id}",
+@router.put(
+    "/{id}",
     response_description="Update a playlist",
     response_model=PlaylistModel,
     response_model_by_alias=False,
@@ -148,7 +152,7 @@ async def update_playlist(id: str, playlist: UpdatePlaylistModel = Body(...)):
         return existing_playlist
     raise HTTPException(status_code=404, detail=f"Playlist {id} not found")
 
-@app.delete("/playlists/{id}", response_description="Delete a Playlist")
+@router.delete("/{id}", response_description="Delete a Playlist")
 async def delete_playlist(id: str):
     """
     Remove a single playlist record from the database.
