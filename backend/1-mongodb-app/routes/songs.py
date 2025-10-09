@@ -27,7 +27,7 @@ class SongModel(BaseModel):
     """
     Container for a single song record.
     """
-    # The primary key for the UserModel, stored as a str on the instance.
+    # The primary key for the SongModel, stored as a str on the instance.
     # This will be aliased to _id when sent to MongoDB,
     # but provided as id in the API requests and responses.
     id: PyObjectId | None = Field(alias="_id", default=None)
@@ -99,7 +99,7 @@ class SongCollection(BaseModel):
 )
 async def create_song(song: SongModel = Body(...)):
     """
-    Insert a new user record.
+    Insert a new song record.
     A unique ``id`` will be created and provided in the response.
     """
     new_song = song.model_dump(by_alias=True, exclude=["id"])
@@ -115,7 +115,7 @@ async def create_song(song: SongModel = Body(...)):
 )
 async def list_songs():
     """
-    List all the user data in the database.
+    List all the song data in the database.
     The response is unpaginated and limited to 1000 results.
     """
     return SongCollection(songs=await song_collection.find().to_list(1000))
@@ -128,7 +128,7 @@ async def list_songs():
 )
 async def show_song(id: str):
     """
-    Get the record for a specific user, looked up by id.
+    Get the record for a specific song, looked up by id.
     """
     if (
         song := await song_collection.find_one({"_id": ObjectId(id)})

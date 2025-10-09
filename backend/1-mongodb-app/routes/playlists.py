@@ -25,18 +25,15 @@ class PlaylistModel(BaseModel):
     """
     Container for a single playlist record.
     """
-    # The primary key for the PlaylistModel, stored as a str on the instance.
-    # This will be aliased to _id when sent to MongoDB,
-    # but provided as id in the API requests and responses.
     id: PyObjectId | None = Field(alias="_id", default=None)
     user_id: PyObjectId | None = Field(default=None)
     playlistname: str = Field(...)
     song_count: int = Field(...)
-    song_ID: list[int] = Field(default_factory=)
-    song_name: str = Field(...)
-    song_duration: int = Field(...)
-    artist_ID: int = Field(...)
-    artist_name: str = Field(...)
+    song_ID: list[PyObjectId] = Field(default_factory=list)
+    song_name: list[str] = Field(default_factory=list)
+    song_duration: list[int] = Field(default_factory=list)
+    artist_ID: list[PyObjectId] = Field(default_factory=list)
+    artist_name: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -44,7 +41,12 @@ class PlaylistModel(BaseModel):
         json_schema_extra={
             "example": {
                 "playlistname": "Baitukas",
-                "song_count": "67",
+                "song_count": 67,
+                "song_ID": ["652e9f3b9b1d8e77a9b5d223", "652e9f3b9b1d8e77a9b5d224"],
+                "artist_ID": ["652e9f3b9b1d8e77a9b5d111"],
+                "song_name": ["Track 1", "Track 2"],
+                "song_duration": [210, 185],
+                "artist_name": ["Artist One"]
             }
         },
     )
