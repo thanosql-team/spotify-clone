@@ -1,7 +1,6 @@
 from fastapi import Depends, FastAPI
 
 from .routes import albums, playlists, songs, users
-from config import settings
 
 def main():
     print("Hello from 1-mongodb-app!")
