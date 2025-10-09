@@ -1,7 +1,3 @@
-# TODO: Refactor based on how users.py is done based on entities.txt
-
-import os
-
 from fastapi import APIRouter, Body, HTTPException, status
 from fastapi.responses import Response
 from pydantic import ConfigDict, BaseModel, Field, EmailStr
@@ -11,8 +7,11 @@ from typing_extensions import Annotated
 
 from bson import ObjectId
 import asyncio
-from pymongo import AsyncMongoClient
 from pymongo import ReturnDocument
+
+from .. import dependencies
+
+db = dependencies.db
 
 router = APIRouter(
     prefix="/albums",

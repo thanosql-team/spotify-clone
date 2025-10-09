@@ -1,8 +1,21 @@
+from functools import lru_cache
 from pymongo import AsyncMongoClient
-from config import Settings
+from . import config
 
-settings = Settings() 
+@lru_cache
+def get_settings():
+    return config.Settings()
+
+@lru_cache
+def get_client(mongodb_url: str):
+    return AsyncMongoClient(mongodb_url)
+
+@lru_cache
+def get_db(client: AsyncMongoClient, db_name: str):
+    return client.get_database(db_name) 
+
+settings = get_settings() 
 
 # IMPORTANT: set a MONGODB_URL environment variable with value as your connection string to MongoDB
-client = AsyncMongoClient(settings.mongodb_url) #,server_api=pymongo.server_api.ServerApi(version="1", strict=True,deprecation_errors=True))
-db = client.get_database("spotify-clone")
+client = get_client(settings.mongodb_url) #,server_api=pymongo.server_api.ServerApi(version="1", strict=True,deprecation_errors=True))
+db = get_db(client, "spotify-clone")
