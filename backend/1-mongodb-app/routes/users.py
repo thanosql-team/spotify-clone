@@ -131,7 +131,7 @@ async def update_user(id: str, user: UpdateUserModel = Body(...)):
     Any missing or `null` fields will be ignored.
     """
     user = {
-        k: v for k, v in user.model_dump(by_alias=True).items() if v is not None
+        k: v for k, v in user.model_dump(by_alias=True).items() if v is not None # type: ignore
     }
     if len(user) >= 1:
         update_result = await user_collection.find_one_and_update(
