@@ -65,7 +65,7 @@ class UpdateSongModel(BaseModel):
     name: str | None = None
     artist: str | None = None
     genre: str | None = None
-    release_year: str | None = None
+    release_year: int | None = None
     duration: str | None = None
     album_name: str | None = None
     album_ID: PyObjectId | None = None
@@ -130,6 +130,33 @@ async def list_songs():
     The response is unpaginated and limited to 1000 results.
     """
     return SongCollection(songs=await song_collection.find().to_list(1000))
+
+@router.get(
+    "/top_artists",
+    response_description="Get top artists by number of songs"
+)
+async def get_top_artists(limit: int = 10):
+    """
+    Return top artists by total number of songs.
+    No MongoDB aggregation used.
+    """
+    songs = await song_collection.find().to_list(1000)
+    artist_count = {}
+
+    for song in songs:
+        artist = song.get("artist", "Unknown Artist")
+        artist_count[artist] = artist_count.get(artist, 0) + 1
+
+    # Sort artists by number of songs (descending)
+    sorted_artists = sorted(artist_count.items(), key=lambda x: x[1], reverse=True)
+
+    # Limit results
+    top_artists = [
+        {"artist": artist, "total_songs": count}
+        for artist, count in sorted_artists[:limit]
+    ]
+
+    return top_artists
 
 @router.get(
     "/{id}",

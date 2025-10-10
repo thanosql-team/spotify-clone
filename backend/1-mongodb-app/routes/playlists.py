@@ -33,7 +33,7 @@ class PlaylistModel(BaseModel):
     song_ID: list[PyObjectId] = Field(default_factory=list)
     song_name: list[str] = Field(default_factory=list)
     song_duration: list[int] = Field(default_factory=list)
-    artist_ID: list[PyObjectId] = Field(default_factory=list)
+    # artist_ID: list[PyObjectId] = Field(default_factory=list)
     artist_name: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(
@@ -45,7 +45,7 @@ class PlaylistModel(BaseModel):
                 "playlistname": "Baitukas",
                 "song_count": 67,
                 "song_ID": ["652e9f3b9b1d8e77a9b5d223", "652e9f3b9b1d8e77a9b5d224"],
-                "artist_ID": ["652e9f3b9b1d8e77a9b5d111"],
+                # "artist_ID": ["652e9f3b9b1d8e77a9b5d111"],
                 "song_name": ["Track 1", "Track 2"],
                 "song_duration": [210, 185],
                 "artist_name": ["Artist One"]
@@ -63,7 +63,7 @@ class UpdatePlaylistModel(BaseModel):
     song_ID: list[PyObjectId] | None = None
     song_name: list[str] | None = None
     song_duration: list[int] | None = None
-    artist_ID: list[PyObjectId] | None = None
+    # artist_ID: list[PyObjectId] | None = None
     artist_name: list[str] | None = None
 
     model_config = ConfigDict(
@@ -75,7 +75,7 @@ class UpdatePlaylistModel(BaseModel):
                 "playlistname": "Baitukas",
                 "song_count": 68,
                 "song_ID": ["652e9f3b9b1d8e77a9b5d223", "652e9f3b9b1d8e77a9b5d224"],
-                "artist_ID": ["652e9f3b9b1d8e77a9b5d111"],
+                # "artist_ID": ["652e9f3b9b1d8e77a9b5d111"],
                 "song_name": ["Track 1", "Track 2"],
                 "song_duration": [210, 185],
                 "artist_name": ["Artist One"]
