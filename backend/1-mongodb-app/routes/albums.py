@@ -9,9 +9,7 @@ from bson import ObjectId
 import asyncio
 from pymongo import ReturnDocument
 
-from .. import dependencies
-
-db = dependencies.db
+from ..dependencies import db
 
 router = APIRouter(
     prefix="/albums",
@@ -26,8 +24,8 @@ class AlbumModel(BaseModel):
     """
     Container for a single album record.
     """
-    id: PyObjectId = Field(alias="_id", default=None)
-    user_id: PyObjectId = Field(default=None, description="Owner of the album")
+    id: PyObjectId | None = Field(alias="_id", default=None)
+    user_id: PyObjectId | None = Field(default=None, description="Owner of the album")
     album_name: str = Field(...)
     artist_name: str = Field(...)
     release_year: int = Field(...)
@@ -152,7 +150,7 @@ async def update_album(id: str, album: UpdateAlbumModel = Body(...)):
     Any missing or `null` fields will be ignored.
     """
     album = {
-        k: v for k, v in album.model_dump(by_alias=True).items() if v is not None
+        k: v for k, v in album.model_dump(by_alias=True).items() if v is not None # type: ignore
     }
     
     # Convert linked IDs
@@ -161,7 +159,7 @@ async def update_album(id: str, album: UpdateAlbumModel = Body(...)):
     if "song_IDs" in album:
         album["song_IDs"] = [ObjectId(s) for s in album["song_IDs"]]
 
-    if len(album) >= 1:
+    if len(album) >= 1: # type: ignore
         update_result = await album_collection.find_one_and_update(
             {"_id": ObjectId(id)},
             {"$set": album},

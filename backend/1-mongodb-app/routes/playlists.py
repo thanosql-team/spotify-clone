@@ -9,9 +9,7 @@ from bson import ObjectId
 import asyncio
 from pymongo import ReturnDocument
 
-from .. import dependencies
-
-db = dependencies.db
+from ..dependencies import db
 
 router = APIRouter(
     prefix="/playlists",
@@ -29,7 +27,7 @@ class PlaylistModel(BaseModel):
     id: PyObjectId | None = Field(alias="_id", default=None)
     user_id: PyObjectId | None = Field(default=None)
     playlistname: str = Field(...)
-    song_count: int = Field(...)
+    song_count: int = Field(default=0)
     song_ID: list[PyObjectId] = Field(default_factory=list)
     song_name: list[str] = Field(default_factory=list)
     song_duration: list[int] = Field(default_factory=list)
@@ -43,7 +41,7 @@ class PlaylistModel(BaseModel):
             "example": {
                 "user_id": "652e9f3b9b1d8e77a9b5d222",
                 "playlistname": "Baitukas",
-                "song_count": 67,
+                "song_count": 2,
                 "song_ID": ["652e9f3b9b1d8e77a9b5d223", "652e9f3b9b1d8e77a9b5d224"],
                 "artist_ID": ["652e9f3b9b1d8e77a9b5d111"],
                 "song_name": ["Track 1", "Track 2"],
@@ -73,7 +71,7 @@ class UpdatePlaylistModel(BaseModel):
             "example": {
                 "user_id": "652e9f3b9b1d8e77a9b5d222",
                 "playlistname": "Baitukas",
-                "song_count": 68,
+                "song_count": 2,
                 "song_ID": ["652e9f3b9b1d8e77a9b5d223", "652e9f3b9b1d8e77a9b5d224"],
                 "artist_ID": ["652e9f3b9b1d8e77a9b5d111"],
                 "song_name": ["Track 1", "Track 2"],
@@ -165,7 +163,7 @@ async def update_playlist(id: str, playlist: UpdatePlaylistModel = Body(...)):
     Any missing or `null` fields will be ignored.
     """
     playlist = {
-        k: v for k, v in playlist.model_dump(by_alias=True).items() if v is not None
+        k: v for k, v in playlist.model_dump(by_alias=True).items() if v is not None # type: ignore
     }
     
     # Convert IDs to ObjectId before updating
@@ -176,7 +174,7 @@ async def update_playlist(id: str, playlist: UpdatePlaylistModel = Body(...)):
     if "artist_ID" in playlist:
         playlist["artist_ID"] = [ObjectId(a) for a in playlist["artist_ID"]]
         
-    if len(playlist) >= 1:
+    if len(playlist) >= 1: # type: ignore
         update_result = await playlist_collection.find_one_and_update(
             {"_id": ObjectId(id)},
             {"$set": playlist},
