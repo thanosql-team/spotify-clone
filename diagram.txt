@@ -1,0 +1,42 @@
+Table users {
+  user_id PyObjectId [pk]
+  username string
+  name string
+  surname string
+  email EmailStr
+}
+
+Table albums {
+  album_id PyObjectId [pk]
+  user_id PyObjectId [ref: > users.user_id]
+  album_name string
+  artist_name string
+  release_year int
+  song_IDs PyObjectId
+  song_names string
+}
+
+Table songs {
+  song_id PyObjectId [pk]
+  name string
+  artist string
+  genre string
+  release_year string
+  duration int
+  album_name string
+  album_ID PyObjectId [ref: > albums.album_id]
+  playlist_name string
+  playlist_ID PyObjectId [ref: > playlists.playlist_id]
+
+}
+
+Table playlists {
+  playlist_id PyObjectId [pk]
+  user_id PyObjectId [ref: > users.user_id]
+  playlistname string
+  song_count int
+  song_ID PyObjectId
+  song_name string
+  song_duration int
+  artist_name string
+}
