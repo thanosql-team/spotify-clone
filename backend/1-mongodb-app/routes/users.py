@@ -9,9 +9,7 @@ from bson import ObjectId
 import asyncio
 from pymongo import ReturnDocument
 
-from .. import dependencies
-
-db = dependencies.db
+from ..dependencies import db
 
 router = APIRouter(
     prefix="/users",
@@ -131,9 +129,9 @@ async def update_user(id: str, user: UpdateUserModel = Body(...)):
     Any missing or `null` fields will be ignored.
     """
     user = {
-        k: v for k, v in user.model_dump(by_alias=True).items() if v is not None
+        k: v for k, v in user.model_dump(by_alias=True).items() if v is not None # type: ignore
     }
-    if len(user) >= 1:
+    if len(user) >= 1: # type: ignore
         update_result = await user_collection.find_one_and_update(
             {"_id": ObjectId(id)},
             {"$set": user},

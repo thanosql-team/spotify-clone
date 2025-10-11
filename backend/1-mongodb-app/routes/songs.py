@@ -9,9 +9,7 @@ from bson import ObjectId
 import asyncio
 from pymongo import ReturnDocument
 
-from .. import dependencies
-
-db = dependencies.db
+from ..dependencies import db
 
 router = APIRouter(
     prefix="/songs",
