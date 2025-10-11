@@ -53,7 +53,7 @@ class UpdateAlbumModel(BaseModel):
     user_id: PyObjectId | None = None
     album_name: str | None = None
     artist_name: str | None = None
-    genre: str | None = None
+    # genre: str | None = None
     release_year: int | None = None
     song_IDs: list[PyObjectId] | None = None
     song_names: list[str] | None = None
