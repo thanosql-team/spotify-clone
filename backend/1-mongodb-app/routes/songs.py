@@ -184,7 +184,7 @@ async def show_song(id: str):
     response_model=SongModel,
     response_model_by_alias=False,
 )
-async def update_song(id: str, s: UpdateSongModel = Body(...)):
+async def update_song(id: str, song: UpdateSongModel = Body(...)):
     """
     Update individual fields of an existing song record.
     Only the provided fields will be updated.
