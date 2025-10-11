@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 
 from .routes import albums, playlists, songs, users
 

@@ -1,12 +1,11 @@
 from fastapi import APIRouter, Body, HTTPException, status
 from fastapi.responses import Response
-from pydantic import ConfigDict, BaseModel, Field, EmailStr
+from pydantic import ConfigDict, BaseModel, Field
 from pydantic.functional_validators import BeforeValidator
 
 from typing_extensions import Annotated
 
 from bson import ObjectId
-import asyncio
 from pymongo import ReturnDocument
 
 from ..dependencies import db

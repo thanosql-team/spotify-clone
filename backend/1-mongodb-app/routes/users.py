@@ -6,7 +6,6 @@ from pydantic.functional_validators import BeforeValidator
 from typing_extensions import Annotated
 
 from bson import ObjectId
-import asyncio
 from pymongo import ReturnDocument
 
 from ..dependencies import db
