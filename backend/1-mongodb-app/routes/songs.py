@@ -33,10 +33,10 @@ class SongModel(BaseModel):
     genre: str = Field(...)
     release_year: str = Field(...)
     duration: int = Field(..., description="Song duration in seconds")
-    album_name: str = Field(default=None)
-    album_ID: PyObjectId = Field(default=None)
-    playlist_name: str = Field(default=None)
-    playlist_ID: PyObjectId = Field(default=None)
+    album_name: str | None = Field(default=None)
+    album_ID: PyObjectId | None = Field(default=None)
+    playlist_name: str | None = Field(default=None)
+    playlist_ID: PyObjectId | None = Field(default=None)
     
     model_config = ConfigDict(
         populate_by_name=True,
