@@ -17,8 +17,10 @@ def get_db(client: AsyncMongoClient, db_name: str):
 
 settings = get_settings() 
 
-print(settings.mongodb_url)
+if settings.mongodb_url is None:
+    print("MONGODB_URL connection string not found in environment (either .env at project root or your environment)")
+# else:
+#     print(settings.mongodb_url)
 
-# IMPORTANT: set a MONGODB_URL environment variable with value as your connection string to MongoDB
 client = get_client(settings.mongodb_url) #server_api=pymongo.server_api.ServerApi(version="1", strict=True,deprecation_errors=True)) # type: ignore
 db = get_db(client, "spotify-clone")
