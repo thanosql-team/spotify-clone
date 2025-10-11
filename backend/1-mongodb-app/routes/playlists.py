@@ -97,7 +97,7 @@ async def create_playlist(playlist: PlaylistModel = Body(...)):
     Insert a new playlist record.
     A unique ``id`` will be created and provided in the response.
     """
-    new_playlist = playlist.model_dump(by_alias=True, exclude=["id"])
+    new_playlist = playlist.model_dump(by_alias=True, exclude=["id"]) # type: ignore
     
     # Convert linked ID fields to ObjectIds
     if new_playlist.get("user_id"):

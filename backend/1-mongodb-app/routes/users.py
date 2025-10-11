@@ -81,7 +81,7 @@ async def create_user(user: UserModel = Body(...)):
     Insert a new user record.
     A unique ``id`` will be created and provided in the response.
     """
-    new_user = user.model_dump(by_alias=True, exclude=["id"])
+    new_user = user.model_dump(by_alias=True, exclude=["id"]) # type: ignore
     result = await user_collection.insert_one(new_user)
     new_user["_id"] = result.inserted_id
     return new_user

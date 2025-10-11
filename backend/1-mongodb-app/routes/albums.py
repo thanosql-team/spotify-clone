@@ -89,7 +89,7 @@ async def create_album(album: AlbumModel = Body(...)):
     Insert a new album record.
     A unique ``id`` will be created and provided in the response.
     """
-    new_album = album.model_dump(by_alias=True, exclude=["id"])
+    new_album = album.model_dump(by_alias=True, exclude=["id"]) # type: ignore
     
     if new_album.get("user_id"):
         new_album["user_id"] = ObjectId(new_album["user_id"])

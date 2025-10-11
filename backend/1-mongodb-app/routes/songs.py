@@ -103,7 +103,7 @@ async def create_song(song: SongModel = Body(...)):
     Insert a new song record.
     A unique ``id`` will be created and provided in the response.
     """
-    new_song = song.model_dump(by_alias=True, exclude=["id"])
+    new_song = song.model_dump(by_alias=True, exclude=["id"]) # type: ignore
 
     # Convert linked IDs to ObjectId
     if new_song.get("album_ID"):
@@ -191,7 +191,7 @@ async def update_song(id: str, song: UpdateSongModel = Body(...)):
     Any missing or `null` fields will be ignored.
     """
     song = {
-        k: v for k, v in song.model_dump(by_alias=True).items() if v is not None
+        k: v for k, v in song.model_dump(by_alias=True).items() if v is not None # type: ignore
     }
 
     # Convert IDs to ObjectId before updating
@@ -200,7 +200,7 @@ async def update_song(id: str, song: UpdateSongModel = Body(...)):
     if "playlist_ID" in song:
         song["playlist_ID"] = ObjectId(song["playlist_ID"])
 
-    if len(song) >= 1:
+    if len(song) >= 1: # type: ignore
         update_result = await song_collection.find_one_and_update(
             {"_id": ObjectId(id)},
             {"$set": song},
