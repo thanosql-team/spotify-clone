@@ -117,24 +117,46 @@ async def list_albums():
     "/{id}/song-count",
     response_description="Get song count of specified album"
 )
-async def get_album_song_count():
+async def get_album_song_count(id: str):
     """
-    Use MongoDB aggregation to count the number of songs in specified album
+    Get the number of songs in a specific album.
+    This uses MongoDB's aggregation framework to count songs **on the server side**.
     """
-    result = album_collection.aggregate([
+    try:
+        album_id = ObjectId(id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid album ID format")
+
+    # Pure server-side aggregation pipeline
+    pipeline = [
+        {"$match": {"_id": album_id}},
         {
-            '$unwind': '$song_names'
-        }, {
-            '$group': {
-                '_id': '$_id', 
-                'count': {
-                    '$sum': 1
+            "$project": {
+                "_id": 0,
+                "album_id": {"$toString": "$_id"},
+                "song_count": {
+                    "$cond": {
+                        "if": {"$isArray": "$song_names"},
+                        "then": {"$size": "$song_names"},
+                        "else": 0
+                    }
                 }
             }
         }
-    ])
+    ]
 
-    return result
+    try:
+        # The aggregation runs on MongoDB server; Motor returns an async cursor
+        async for doc in album_collection.aggregate(pipeline):
+            return doc  # returns a clean JSON document directly
+
+        # If aggregation returned no result (album not found)
+        raise HTTPException(status_code=404, detail=f"Album {id} not found")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Aggregation error: {str(e)}")
+
+
 
 @router.get(
     "/{id}",

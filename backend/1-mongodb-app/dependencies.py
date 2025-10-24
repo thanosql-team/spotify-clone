@@ -1,5 +1,5 @@
 from functools import lru_cache
-from pymongo import AsyncMongoClient
+from motor.motor_asyncio import AsyncIOMotorClient
 from . import config
 # import pymongo
 
@@ -9,10 +9,10 @@ def get_settings():
 
 @lru_cache
 def get_client(mongodb_url: str):
-    return AsyncMongoClient(mongodb_url)
+    return AsyncIOMotorClient(mongodb_url)
 
 @lru_cache
-def get_db(client: AsyncMongoClient, db_name: str):
+def get_db(client: AsyncIOMotorClient, db_name: str):
     return client.get_database(db_name) 
 
 settings = get_settings() 
