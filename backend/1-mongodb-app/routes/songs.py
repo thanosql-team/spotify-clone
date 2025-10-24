@@ -129,31 +129,60 @@ async def list_songs():
     return SongCollection(songs=await song_collection.find().to_list(1000))
 
 @router.get(
-    "/top_artists",
-    response_description="Get top artists by number of songs"
+    "/artists",
+    response_description="Get all artists with their songs listed underneath"
 )
-async def get_top_artists(limit: int = 10):
+async def get_all_artists():
     """
-    Return top artists by total number of songs.
-    No MongoDB aggregation used.
+    Return all artists and their songs (artist name on top, songs listed below).
+    Uses MongoDB aggregation (server-side) and safely serializes ObjectIds.
     """
-    songs = await song_collection.find().to_list(1000)
-    artist_count = {}
-
-    for song in songs:
-        artist = song.get("artist", "Unknown Artist")
-        artist_count[artist] = artist_count.get(artist, 0) + 1
-
-    # Sort artists by number of songs (descending)
-    sorted_artists = sorted(artist_count.items(), key=lambda x: x[1], reverse=True)
-
-    # Limit results
-    top_artists = [
-        {"artist": artist, "total_songs": count}
-        for artist, count in sorted_artists[:limit]
+    pipeline = [
+        # Sort by artist name alphabetically
+        {"$sort": {"artist": 1}},
+        # Group songs under each artist
+        {
+            "$group": {
+                "_id": "$artist",
+                "songs": {
+                    "$push": {
+                        "song_id": "$_id",
+                        "name": "$name",
+                        "duration": "$duration",
+                        "genre": "$genre",
+                        "album_name": "$album_name",
+                        "release_year": "$release_year"
+                    }
+                }
+            }
+        },
+        # Project artist name to top-level key for clean output
+        {
+            "$project": {
+                "_id": 0,
+                "artist": "$_id",
+                "songs": 1
+            }
+        },
+        # Sort artists alphabetically again (optional)
+        {"$sort": {"artist": 1}}
     ]
 
-    return top_artists
+    try:
+        cursor = song_collection.aggregate(pipeline)
+        results = await cursor.to_list(length=None)
+
+        # Convert ObjectIds to strings for FastAPI serialization
+        for artist_doc in results:
+            for song in artist_doc.get("songs", []):
+                if isinstance(song.get("song_id"), ObjectId):
+                    song["song_id"] = str(song["song_id"])
+
+        return results
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Aggregation error: {str(e)}")
+
 
 @router.get(
     "/{id}",
