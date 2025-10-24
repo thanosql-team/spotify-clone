@@ -114,26 +114,27 @@ async def list_albums():
     return AlbumCollection(albums=await album_collection.find().to_list(1000))
 
 @router.get(
-    "/songs_per_album",
-    response_description="Get number of songs per album"
+    "/{id}/song-count",
+    response_description="Get song count of specified album"
 )
-async def get_songs_per_album():
+async def get_album_song_count():
     """
-    Return how many songs each album contains.
-    Uses Python logic instead of MongoDB aggregation.
+    Use MongoDB aggregation to count the number of songs in specified album
     """
-    albums = await album_collection.find().to_list(1000)
-    results = []
+    result = album_collection.aggregate([
+        {
+            '$unwind': '$song_names'
+        }, {
+            '$group': {
+                '_id': '$_id', 
+                'count': {
+                    '$sum': 1
+                }
+            }
+        }
+    ])
 
-    for album in albums:
-        song_names = album.get("song_names", [])
-        results.append({
-            "album_name": album.get("album_name", "Unknown Album"),
-            "artist_name": album.get("artist_name", "Unknown Artist"),
-            "song_count": len(song_names)
-        })
-
-    return results
+    return result
 
 @router.get(
     "/{id}",
