@@ -8,7 +8,7 @@ from typing_extensions import Annotated
 from bson import ObjectId
 from pymongo import ReturnDocument
 
-from ..dependencies import db
+from ..dependencies import db, cache_manager, get_settings
 
 router = APIRouter(
     prefix="/users",
@@ -80,10 +80,14 @@ async def create_user(user: UserModel = Body(...)):
     """
     Insert a new user record.
     A unique ``id`` will be created and provided in the response.
+    - Invalidates list cache when new user created
     """
     new_user = user.model_dump(by_alias=True, exclude=["id"]) # type: ignore
     result = await user_collection.insert_one(new_user)
     new_user["_id"] = result.inserted_id
+    # Invalidate list cache
+    await cache_manager.delete_cache("list:users")
+    
     return new_user
 
 @router.get(
@@ -96,8 +100,28 @@ async def list_users():
     """
     List all the user data in the database.
     The response is unpaginated and limited to 1000 results.
+    - Invalidated on: create, update, delete user
     """
-    return UserCollection(users=await user_collection.find().to_list(1000))
+    cache_key = "list:users"
+    settings = get_settings()
+    
+    # Try to get from cache first
+    cached = await cache_manager.get_cache(cache_key)
+    if cached is not None:
+        return UserCollection(users=cached)
+    
+    # Cache miss - fetch from DB
+    users = await user_collection.find().to_list(1000)
+    result = UserCollection(users=users)
+    
+    # Store in cache with TTL
+    await cache_manager.set_cache(
+        cache_key,
+        result.model_dump()["users"],
+        ttl=settings.cache_ttl_list
+    )
+    
+    return result
 
 @router.get(
     "/{id}",
@@ -109,10 +133,24 @@ async def show_user(id: str):
     """
     Get the record for a specific user, looked up by id.
     """
-    if (
-        user := await user_collection.find_one({"_id": ObjectId(id)})
-    ) is not None:
+    cache_key = f"user:{id}"
+    settings = get_settings()
+    
+    # Try cache first
+    cached = await cache_manager.get_cache(cache_key)
+    if cached is not None:
+        return cached
+    
+    # Cache miss - fetch from DB
+    if (user := await user_collection.find_one({"_id": ObjectId(id)})) is not None:
+        # Cache the result
+        await cache_manager.set_cache(
+            cache_key,
+            user,
+            ttl=settings.cache_ttl_single
+        )
         return user
+    
     raise HTTPException(status_code=404, detail="User {id} not found")
     
 @router.put(
@@ -126,6 +164,7 @@ async def update_user(id: str, user: UpdateUserModel = Body(...)):
     Update individual fields of an existing user record.
     Only the provided fields will be updated.
     Any missing or `null` fields will be ignored.
+    - Invalidates user cache and list cache
     """
     user = {
         k: v for k, v in user.model_dump(by_alias=True).items() if v is not None # type: ignore
@@ -137,6 +176,10 @@ async def update_user(id: str, user: UpdateUserModel = Body(...)):
             return_document=ReturnDocument.AFTER,
         )
         if update_result is not None:
+            # Invalidate caches
+            await cache_manager.delete_cache(f"user:{id}")
+            await cache_manager.delete_cache("list:users")
+            
             return update_result
         else:
             raise HTTPException(status_code=404, detail=f"User {id} not found")
@@ -149,8 +192,13 @@ async def update_user(id: str, user: UpdateUserModel = Body(...)):
 async def delete_user(id: str):
     """
     Remove a single user record from the database.
+    - Invalidates all related caches
     """
     delete_result = await user_collection.delete_one({"_id": ObjectId(id)})
     if delete_result.deleted_count == 1:
+        # Invalidate caches
+        await cache_manager.delete_cache(f"user:{id}")
+        await cache_manager.delete_cache("list:users")
+        
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     raise HTTPException(status_code=404, detail=f"User {id} not found")

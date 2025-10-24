@@ -8,7 +8,7 @@ from typing_extensions import Annotated
 from bson import ObjectId
 from pymongo import ReturnDocument
 
-from ..dependencies import db
+from ..dependencies import db, cache_manager, get_settings
 
 router = APIRouter(
     prefix="/playlists",
@@ -96,6 +96,9 @@ async def create_playlist(playlist: PlaylistModel = Body(...)):
     """
     Insert a new playlist record.
     A unique ``id`` will be created and provided in the response.
+    
+    ⚡ Cache Strategy: Active invalidation
+    - Invalidates playlist aggregations when new playlist created
     """
     new_playlist = playlist.model_dump(by_alias=True, exclude=["id"]) # type: ignore
     
@@ -109,6 +112,10 @@ async def create_playlist(playlist: PlaylistModel = Body(...)):
 
     result = await playlist_collection.insert_one(new_playlist)
     new_playlist["_id"] = result.inserted_id
+    
+    # ⚡ Invalidate caches
+    await cache_manager.invalidate_aggregations()
+    
     return new_playlist
 
 @router.get(
@@ -121,8 +128,28 @@ async def list_playlists():
     """
     List all the playlist data in the database.
     The response is unpaginated and limited to 1000 results.
+    - Invalidated on: create, update, delete playlist (5mins)
     """
-    return PlaylistCollection(playlists=await playlist_collection.find().to_list(1000))
+    cache_key = "list:playlists"
+    settings = get_settings()
+    
+    # Try to get from cache first
+    cached = await cache_manager.get_cache(cache_key)
+    if cached is not None:
+        return PlaylistCollection(playlists=cached)
+    
+    # Cache miss - fetch from DB
+    playlists = await playlist_collection.find().to_list(1000)
+    result = PlaylistCollection(playlists=playlists)
+    
+    # Store in cache with TTL
+    await cache_manager.set_cache(
+        cache_key,
+        result.model_dump()["playlists"],
+        ttl=settings.cache_ttl_list
+    )
+    
+    return result
 
 @router.get(
     "/{id}",
@@ -133,10 +160,26 @@ async def list_playlists():
 async def show_playlist(id: str):
     """
     Get the record for a specific playlist, looked up by id.
+    - Single item queries cached for half an hour
     """
-    playlist = await playlist_collection.find_one({"_id": ObjectId(id)})
-    if playlist is None:
-        raise HTTPException(status_code=404, detail=f"Playlist {id} not found")
+    cache_key = f"playlist:{id}"
+    settings = get_settings()
+    
+    # Try cache first
+    cached = await cache_manager.get_cache(cache_key)
+    if cached is not None:
+        playlist = cached
+    else:
+        playlist = await playlist_collection.find_one({"_id": ObjectId(id)})
+        if playlist is None:
+            raise HTTPException(status_code=404, detail=f"Playlist {id} not found")
+        
+        # Cache the result
+        await cache_manager.set_cache(
+            cache_key,
+            playlist,
+            ttl=settings.cache_ttl_single
+        )
 
     # Convert ObjectIds to strings
     playlist["_id"] = str(playlist["_id"])
@@ -160,6 +203,7 @@ async def update_playlist(id: str, playlist: UpdatePlaylistModel = Body(...)):
     Update individual fields of an existing playlist record.
     Only the provided fields will be updated.
     Any missing or `null` fields will be ignored.
+    - Invalidates specific playlist cache and aggregations
     """
     playlist = {
         k: v for k, v in playlist.model_dump(by_alias=True).items() if v is not None # type: ignore
@@ -180,6 +224,9 @@ async def update_playlist(id: str, playlist: UpdatePlaylistModel = Body(...)):
             return_document=ReturnDocument.AFTER,
         )
         if update_result is not None:
+            # Invalidate caches
+            await cache_manager.invalidate_playlist_cache(id)
+            
             return update_result
         else:
             raise HTTPException(status_code=404, detail=f"Playlist {id} not found")
@@ -192,8 +239,12 @@ async def update_playlist(id: str, playlist: UpdatePlaylistModel = Body(...)):
 async def delete_playlist(id: str):
     """
     Remove a single playlist record from the database.
+    - Invalidates all related caches
     """
     delete_result = await playlist_collection.delete_one({"_id": ObjectId(id)})
     if delete_result.deleted_count == 1:
+        # Invalidate caches
+        await cache_manager.invalidate_playlist_cache(id)
+        
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     raise HTTPException(status_code=404, detail=f"Playlist {id} not found")
