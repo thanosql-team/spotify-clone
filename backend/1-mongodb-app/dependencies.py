@@ -1,6 +1,9 @@
 from functools import lru_cache
 from motor.motor_asyncio import AsyncIOMotorClient
 from . import config
+from .cache_manager import CacheManager
+import asyncio
+
 # import pymongo
 
 @lru_cache
@@ -24,3 +27,13 @@ if settings.mongodb_url is None:
 
 client = get_client(settings.mongodb_url) #server_api=pymongo.server_api.ServerApi(version="1", strict=True,deprecation_errors=True)) # type: ignore
 db = get_db(client, "spotify-clone")
+
+cache_manager = CacheManager(redis_url=settings.redis_url)
+
+async def init_cache():
+    """Initialize cache connection"""
+    await cache_manager.connect()
+
+async def close_cache():
+    """Close cache connection"""
+    await cache_manager.disconnect()

@@ -8,7 +8,7 @@ from typing_extensions import Annotated
 from bson import ObjectId
 from pymongo import ReturnDocument
 
-from ..dependencies import db
+from ..dependencies import db, cache_manager, get_settings
 
 router = APIRouter(
     prefix="/songs",
@@ -102,6 +102,9 @@ async def create_song(song: SongModel = Body(...)):
     """
     Insert a new song record.
     A unique ``id`` will be created and provided in the response.
+    
+    ⚡ Cache Strategy: Active invalidation
+    - Invalidates artist aggregation cache when new song is created
     """
     new_song = song.model_dump(by_alias=True, exclude=["id"]) # type: ignore
 
@@ -113,6 +116,10 @@ async def create_song(song: SongModel = Body(...)):
 
     result = await song_collection.insert_one(new_song)
     new_song["_id"] = result.inserted_id
+    
+    # ⚡ Invalidate aggregation caches
+    await cache_manager.invalidate_song_cache(str(result.inserted_id))
+    
     return new_song
 
 @router.get(
@@ -125,8 +132,31 @@ async def list_songs():
     """
     List all the song data in the database.
     The response is unpaginated and limited to 1000 results.
+    
+    ⚡ Cache Strategy: TTL-based caching (5 minutes)
+    - Reduces database load for frequent list requests
+    - Invalidated on: create, update, delete song
     """
-    return SongCollection(songs=await song_collection.find().to_list(1000))
+    cache_key = "list:songs"
+    settings = get_settings()
+    
+    # Try to get from cache first
+    cached = await cache_manager.get_cache(cache_key)
+    if cached is not None:
+        return SongCollection(songs=cached)
+    
+    # Cache miss - fetch from DB
+    songs = await song_collection.find().to_list(1000)
+    result = SongCollection(songs=songs)
+    
+    # Store in cache with TTL
+    await cache_manager.set_cache(
+        cache_key,
+        result.model_dump()["songs"],
+        ttl=settings.cache_ttl_list
+    )
+    
+    return result
 
 @router.get(
     "/artists",
@@ -136,7 +166,16 @@ async def get_all_artists():
     """
     Return all artists and their songs (artist name on top, songs listed below).
     Uses MongoDB aggregation (server-side) and safely serializes ObjectIds.
+    - Invalidated on: any song create/update/delete
     """
+    cache_key = "aggregation:artists"
+    settings = get_settings()
+    
+    # Try cache first
+    cached = await cache_manager.get_cache(cache_key)
+    if cached is not None:
+        return cached
+    
     pipeline = [
         # Sort by artist name alphabetically
         {"$sort": {"artist": 1}},
@@ -178,6 +217,13 @@ async def get_all_artists():
                 if isinstance(song.get("song_id"), ObjectId):
                     song["song_id"] = str(song["song_id"])
 
+        # Cache the result
+        await cache_manager.set_cache(
+            cache_key,
+            results,
+            ttl=settings.cache_ttl_aggregation
+        )
+        
         return results
 
     except Exception as e:
@@ -193,10 +239,26 @@ async def get_all_artists():
 async def show_song(id: str):
     """
     Get the record for a specific song, looked up by id.
+    - Single item queries cached for half an hour
     """
-    song = await song_collection.find_one({"_id": ObjectId(id)})
-    if song is None:
-        raise HTTPException(status_code=404, detail=f"Song {id} not found")
+    cache_key = f"song:{id}"
+    settings = get_settings()
+    
+    # Try cache first
+    cached = await cache_manager.get_cache(cache_key)
+    if cached is not None:
+        song = cached
+    else:
+        song = await song_collection.find_one({"_id": ObjectId(id)})
+        if song is None:
+            raise HTTPException(status_code=404, detail=f"Song {id} not found")
+        
+        # Cache the result
+        await cache_manager.set_cache(
+            cache_key,
+            song,
+            ttl=settings.cache_ttl_single
+        )
 
     # Convert ObjectIds to strings for response
     song["_id"] = str(song["_id"])
@@ -218,6 +280,7 @@ async def update_song(id: str, song: UpdateSongModel = Body(...)):
     Update individual fields of an existing song record.
     Only the provided fields will be updated.
     Any missing or `null` fields will be ignored.
+    - Invalidates aggregations and single song cache
     """
     song = {
         k: v for k, v in song.model_dump(by_alias=True).items() if v is not None # type: ignore
@@ -236,6 +299,9 @@ async def update_song(id: str, song: UpdateSongModel = Body(...)):
             return_document=ReturnDocument.AFTER,
         )
         if update_result is not None:
+            # Invalidate caches
+            await cache_manager.invalidate_song_cache(id)
+            
             return update_result
         else:
             raise HTTPException(status_code=404, detail=f"Song {id} not found")
@@ -248,8 +314,14 @@ async def update_song(id: str, song: UpdateSongModel = Body(...)):
 async def delete_song(id: str):
     """
     Remove a single song record from the database.
+    
+    Cache Strategy: Active invalidation
+    - Invalidates all related caches
     """
     delete_result = await song_collection.delete_one({"_id": ObjectId(id)})
     if delete_result.deleted_count == 1:
+        # Invalidate caches
+        await cache_manager.invalidate_song_cache(id)
+        
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     raise HTTPException(status_code=404, detail=f"Song {id} not found")

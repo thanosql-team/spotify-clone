@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # Redis service
+  redis:
+    image: redis:latest
+    container_name: spotify-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - spotify-network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: spotify-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URL=${MONGODB_URL}
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/1-mongodb-app:/app/1-mongodb-app
+    networks:
+      - spotify-network
+    command: fastapi dev 1-mongodb-app/main.py --host 0.0.0.0 --port 8000
+
+volumes:
+  redis-data:
+
+networks:
+  spotify-network:
+    driver: bridge

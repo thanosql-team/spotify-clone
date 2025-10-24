@@ -8,7 +8,7 @@ from typing_extensions import Annotated
 from bson import ObjectId
 from pymongo import ReturnDocument
 
-from ..dependencies import db
+from ..dependencies import db, cache_manager, get_settings
 
 router = APIRouter(
     prefix="/albums",
@@ -88,6 +88,7 @@ async def create_album(album: AlbumModel = Body(...)):
     """
     Insert a new album record.
     A unique ``id`` will be created and provided in the response.
+    - Clears aggregation caches when new album is created
     """
     new_album = album.model_dump(by_alias=True, exclude=["id"]) # type: ignore
     
@@ -98,6 +99,9 @@ async def create_album(album: AlbumModel = Body(...)):
         
     result = await album_collection.insert_one(new_album)
     new_album["_id"] = result.inserted_id
+    # Invalidate aggregation caches
+    await cache_manager.invalidate_aggregations()
+    
     return new_album
 
 @router.get(
@@ -110,8 +114,28 @@ async def list_albums():
     """
     List all the album data in the database.
     The response is unpaginated and limited to 1000 results.
+    - Invalidated on: create, update, delete album
     """
-    return AlbumCollection(albums=await album_collection.find().to_list(1000))
+    cache_key = "list:albums"
+    settings = get_settings()
+    
+    # Try to get from cache first
+    cached = await cache_manager.get_cache(cache_key)
+    if cached is not None:
+        return AlbumCollection(albums=cached)
+    
+    # Cache miss - fetch from DB
+    albums = await album_collection.find().to_list(1000)
+    result = AlbumCollection(albums=albums)
+    
+    # Store in cache with TTL
+    await cache_manager.set_cache(
+        cache_key,
+        result.model_dump()["albums"],
+        ttl=settings.cache_ttl_list
+    )
+    
+    return result
 
 @router.get(
     "/{id}/song-count",
@@ -121,11 +145,20 @@ async def get_album_song_count(id: str):
     """
     Get the number of songs in a specific album.
     This uses MongoDB's aggregation framework to count songs **on the server side**.
+    - Invalidated on: update album or songs
     """
     try:
         album_id = ObjectId(id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid album ID format")
+
+    cache_key = f"album:song_count:{id}"
+    settings = get_settings()
+    
+    # Try cache first
+    cached = await cache_manager.get_cache(cache_key)
+    if cached is not None:
+        return cached
 
     # Pure server-side aggregation pipeline
     pipeline = [
@@ -148,6 +181,12 @@ async def get_album_song_count(id: str):
     try:
         # The aggregation runs on MongoDB server; Motor returns an async cursor
         async for doc in album_collection.aggregate(pipeline):
+            # Cache the result
+            await cache_manager.set_cache(
+                cache_key,
+                doc,
+                ttl=settings.cache_ttl_aggregation
+            )
             return doc  # returns a clean JSON document directly
 
         # If aggregation returned no result (album not found)
@@ -167,10 +206,28 @@ async def get_album_song_count(id: str):
 async def show_album(id: str):
     """
     Get the record for a specific album, looked up by id.
+    - Single item queries are lightweight but if requested frequently, worth caching
     """
-    album = await album_collection.find_one({"_id": ObjectId(id)})
-    if album is None:
-        raise HTTPException(status_code=404, detail=f"Album {id} not found")
+    cache_key = f"album:{id}"
+    settings = get_settings()
+    
+    # Try cache first
+    cached = await cache_manager.get_cache(cache_key)
+    if cached is not None:
+        # Reconstruct the album from cache
+        album = cached
+    else:
+        # Cache miss - fetch from DB
+        album = await album_collection.find_one({"_id": ObjectId(id)})
+        if album is None:
+            raise HTTPException(status_code=404, detail=f"Album {id} not found")
+        
+        # Cache the result
+        await cache_manager.set_cache(
+            cache_key,
+            album,
+            ttl=settings.cache_ttl_single
+        )
 
     # Convert ObjectIds to strings
     album["_id"] = str(album["_id"])
@@ -192,6 +249,7 @@ async def update_album(id: str, album: UpdateAlbumModel = Body(...)):
     Update individual fields of an existing album record.
     Only the provided fields will be updated.
     Any missing or `null` fields will be ignored.
+    - Invalidates single album cache and aggregations
     """
     album = {
         k: v for k, v in album.model_dump(by_alias=True).items() if v is not None # type: ignore
@@ -210,6 +268,9 @@ async def update_album(id: str, album: UpdateAlbumModel = Body(...)):
             return_document=ReturnDocument.AFTER,
         )
         if update_result is not None:
+            # Invalidate caches
+            await cache_manager.invalidate_album_cache(id)
+            
             return update_result
         else:
             raise HTTPException(status_code=404, detail=f"Album {id} not found")
@@ -222,8 +283,12 @@ async def update_album(id: str, album: UpdateAlbumModel = Body(...)):
 async def delete_album(id: str):
     """
     Remove a single album record from the database.
+    - Invalidates all related caches
     """
     delete_result = await album_collection.delete_one({"_id": ObjectId(id)})
     if delete_result.deleted_count == 1:
+        # Invalidate caches
+        await cache_manager.invalidate_album_cache(id)
+        
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     raise HTTPException(status_code=404, detail=f"Album {id} not found")
