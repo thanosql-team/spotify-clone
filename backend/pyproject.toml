@@ -12,4 +12,5 @@ dependencies = [
     "python-dotenv>=1.1.1",
     "redis>=5.0.0",
     "aioredis>=2.0.0",
+    "cassandra-driver>=3.29.3",
 ]
