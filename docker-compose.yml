@@ -18,6 +18,25 @@ services:
     networks:
       - spotify-network
 
+  # Cassandra service
+  cassandra:
+    image: cassandra:5.0
+    container_name: spotify-cassandra
+    ports:
+      - "9042:9042"
+    environment:
+      - CASSANDRA_CLUSTER_NAME=SpotifyCluster
+      - CASSANDRA_NUM_TOKENS=8
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe keyspaces'"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+    networks:
+      - spotify-network
+
   # FastAPI Backend
   backend:
     build:
@@ -29,17 +48,22 @@ services:
     environment:
       - MONGODB_URL=${MONGODB_URL}
       - REDIS_URL=redis://redis:6379/0
+      - CASSANDRA_HOST=cassandra
     depends_on:
       redis:
+        condition: service_healthy
+      cassandra:
         condition: service_healthy
     volumes:
       - ./backend/1-mongodb-app:/app/1-mongodb-app
     networks:
       - spotify-network
-    command: fastapi dev 1-mongodb-app/main.py --host 0.0.0.0 --port 8000
+    # use uvicorn explicitly to ensure FastAPI loads correctly
+    command: uvicorn 1-mongodb-app.main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
   redis-data:
+  cassandra-data:
 
 networks:
   spotify-network:

@@ -9,6 +9,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 
 from ..dependencies import db, cache_manager, get_settings
+from ..change_logger import log_playlist_change
 
 router = APIRouter(
     prefix="/playlists",
@@ -112,8 +113,17 @@ async def create_playlist(playlist: PlaylistModel = Body(...)):
 
     result = await playlist_collection.insert_one(new_playlist)
     new_playlist["_id"] = result.inserted_id
+
+    # 🧾 Log CREATE in Cassandra
+    await log_playlist_change(
+        playlist_id=str(result.inserted_id),
+        user_id=str(playlist.user_id) if playlist.user_id else "unknown",
+        action="create",
+        old_data=None,
+        new_data=new_playlist
+    )
     
-    # ⚡ Invalidate caches
+    # Invalidate caches
     await cache_manager.invalidate_aggregations()
     
     return new_playlist
@@ -216,7 +226,11 @@ async def update_playlist(id: str, playlist: UpdatePlaylistModel = Body(...)):
         playlist["song_ID"] = [ObjectId(s) for s in playlist["song_ID"]]
     if "artist_ID" in playlist:
         playlist["artist_ID"] = [ObjectId(a) for a in playlist["artist_ID"]]
-        
+
+    existing_playlist = await playlist_collection.find_one({"_id": ObjectId(id)})
+    if not existing_playlist:
+        raise HTTPException(status_code=404, detail=f"Album {id} not found")
+    
     if len(playlist) >= 1: # type: ignore
         update_result = await playlist_collection.find_one_and_update(
             {"_id": ObjectId(id)},
@@ -226,7 +240,16 @@ async def update_playlist(id: str, playlist: UpdatePlaylistModel = Body(...)):
         if update_result is not None:
             # Invalidate caches
             await cache_manager.invalidate_playlist_cache(id)
-            
+
+            # Log UPDATE in Cassandra
+            await log_playlist_change(
+                playlist_id=id,
+                user_id=str(existing_playlist.get("user_id", "unknown")),
+                action="update",
+                old_data=existing_playlist,
+                new_data=update_result
+            )
+        
             return update_result
         else:
             raise HTTPException(status_code=404, detail=f"Playlist {id} not found")
@@ -239,12 +262,29 @@ async def update_playlist(id: str, playlist: UpdatePlaylistModel = Body(...)):
 async def delete_playlist(id: str):
     """
     Remove a single playlist record from the database.
-    - Invalidates all related caches
+    Logs the deletion to Cassandra before removing it.
     """
+    # Step 1: fetch existing playlist before deleting
+    existing_playlist = await playlist_collection.find_one({"_id": ObjectId(id)})
+    if not existing_playlist:
+        raise HTTPException(status_code=404, detail=f"Playlist {id} not found")
+
+    # Step 2: delete playlist
     delete_result = await playlist_collection.delete_one({"_id": ObjectId(id)})
+
     if delete_result.deleted_count == 1:
         # Invalidate caches
         await cache_manager.invalidate_playlist_cache(id)
-        
+
+        # Step 3: log deletion to Cassandra
+        await log_playlist_change(
+            playlist_id=id,
+            user_id=str(existing_playlist.get("user_id", "unknown")),
+            action="delete",
+            old_data=existing_playlist,
+            new_data=None
+        )
+
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     raise HTTPException(status_code=404, detail=f"Playlist {id} not found")

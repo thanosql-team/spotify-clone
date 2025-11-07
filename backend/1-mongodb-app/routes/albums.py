@@ -9,6 +9,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 
 from ..dependencies import db, cache_manager, get_settings
+from ..change_logger import log_album_change
 
 router = APIRouter(
     prefix="/albums",
@@ -99,6 +100,15 @@ async def create_album(album: AlbumModel = Body(...)):
         
     result = await album_collection.insert_one(new_album)
     new_album["_id"] = result.inserted_id
+    
+    # Log change to Cassandra
+    await log_album_change(
+        album_id=str(result.inserted_id),
+        user_id=str(album.user_id) if album.user_id else "unknown",
+        action="create",
+        old_data=None,
+        new_data=new_album
+    )
     # Invalidate aggregation caches
     await cache_manager.invalidate_aggregations()
     
@@ -252,16 +262,21 @@ async def update_album(id: str, album: UpdateAlbumModel = Body(...)):
     - Invalidates single album cache and aggregations
     """
     album = {
-        k: v for k, v in album.model_dump(by_alias=True).items() if v is not None # type: ignore
+        k: v for k, v in album.model_dump(by_alias=True).items() if v is not None
     }
-    
+
     # Convert linked IDs
     if "user_id" in album:
         album["user_id"] = ObjectId(album["user_id"])
     if "song_IDs" in album:
         album["song_IDs"] = [ObjectId(s) for s in album["song_IDs"]]
 
-    if len(album) >= 1: # type: ignore
+    # Fetch current album before update for logging
+    existing_album = await album_collection.find_one({"_id": ObjectId(id)})
+    if not existing_album:
+        raise HTTPException(status_code=404, detail=f"Album {id} not found")
+
+    if len(album) >= 1:
         update_result = await album_collection.find_one_and_update(
             {"_id": ObjectId(id)},
             {"$set": album},
@@ -270,25 +285,49 @@ async def update_album(id: str, album: UpdateAlbumModel = Body(...)):
         if update_result is not None:
             # Invalidate caches
             await cache_manager.invalidate_album_cache(id)
-            
+
+            # Log UPDATE in Cassandra
+            await log_album_change(
+                album_id=id,
+                user_id=str(existing_album.get("user_id", "unknown")),
+                action="update",
+                old_data=existing_album,
+                new_data=update_result,
+            )
             return update_result
-        else:
-            raise HTTPException(status_code=404, detail=f"Album {id} not found")
-    # The update is empty, so return the matching document:
-    if (existing_album := await album_collection.find_one({"_id": ObjectId(id)})) is not None:
-        return existing_album
-    raise HTTPException(status_code=404, detail=f"Album {id} not found")
+
+        raise HTTPException(status_code=404, detail=f"Album {id} not found")
+
+    # If nothing to update, return existing document
+    return existing_album
 
 @router.delete("/{id}", response_description="Delete an Album")
 async def delete_album(id: str):
     """
     Remove a single album record from the database.
-    - Invalidates all related caches
+    Logs the deletion to Cassandra before removing it.
     """
+    # Step 1: fetch existing album before deleting
+    existing_album = await album_collection.find_one({"_id": ObjectId(id)})
+    if not existing_album:
+        raise HTTPException(status_code=404, detail=f"Album {id} not found")
+
+    # Step 2: delete album from MongoDB
     delete_result = await album_collection.delete_one({"_id": ObjectId(id)})
+
     if delete_result.deleted_count == 1:
         # Invalidate caches
         await cache_manager.invalidate_album_cache(id)
-        
+
+        # Step 3: log deletion to Cassandra
+        await log_album_change(
+            album_id=id,
+            user_id=str(existing_album.get("user_id", "unknown")),
+            action="delete",
+            old_data=existing_album,
+            new_data=None
+        )
+
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     raise HTTPException(status_code=404, detail=f"Album {id} not found")

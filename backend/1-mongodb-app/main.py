@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 
 from .routes import albums, playlists, songs, users
+from . import change_logs
 from .dependencies import init_cache, close_cache
+from .dependencies_cassandra import get_cassandra_session
 
 def main():
     print("Hello from 1-mongodb-app!")
@@ -12,12 +14,14 @@ app.include_router(albums.router)
 app.include_router(playlists.router)
 app.include_router(songs.router)
 app.include_router(users.router)
+app.include_router(change_logs.router)
 
 # Startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
     """Initialize cache connection on app startup"""
     await init_cache()
+    get_cassandra_session()
     print("Cache initialized")
 
 @app.on_event("shutdown")
