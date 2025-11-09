@@ -1,0 +1,31 @@
+Table album_change_log {
+  album_id text [pk] // Partition key
+  change_time timestamp [pk, note: 'Clustering key (DESC)']
+  user_id text
+  action text
+  old_data text
+  new_data text
+}
+
+Table playlist_change_log {
+  playlist_id text [pk] // Partition key
+  change_time timestamp [pk, note: 'Clustering key (DESC)']
+  user_id text
+  action text
+  old_data text
+  new_data text
+}
+
+Table entity_changes_by_user {
+  user_id text [pk] // Partition key
+  change_time timestamp [pk, note: 'Clustering key (DESC)']
+  entity_type text
+  entity_id text
+  action text
+}
+
+// Relationships
+Ref: album_change_log.user_id > entity_changes_by_user.user_id
+Ref: playlist_change_log.user_id > entity_changes_by_user.user_id
+Ref: album_change_log.album_id > entity_changes_by_user.entity_id
+Ref: playlist_change_log.playlist_id > entity_changes_by_user.entity_id
