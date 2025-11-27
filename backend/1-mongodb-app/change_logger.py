@@ -33,10 +33,11 @@ async def log_album_change(album_id: str, user_id: str, action: str, old_data: d
     )
     session.execute(
         """
-        INSERT INTO entity_changes_all (entity_type, change_time, user_id, entity_id, action)
+        INSERT INTO entity_changes_by_entity_action 
+        (entity_type, action, change_time, user_id, entity_id)
         VALUES (%s, %s, %s, %s, %s)
         """,
-        ("album", now, user_id, album_id, action)
+        ("album", action, now, user_id, album_id)
     )
 
 async def log_playlist_change(playlist_id: str, user_id: str, action: str, old_data: dict | None, new_data: dict | None):
@@ -57,8 +58,9 @@ async def log_playlist_change(playlist_id: str, user_id: str, action: str, old_d
     )
     session.execute(
         """
-        INSERT INTO entity_changes_all (entity_type, change_time, user_id, entity_id, action)
+        INSERT INTO entity_changes_by_entity_action 
+        (entity_type, action, change_time, user_id, entity_id)
         VALUES (%s, %s, %s, %s, %s)
         """,
-        ("playlist", now, user_id, playlist_id, action)
+        ("playlist", action, now, user_id, playlist_id)
     )
