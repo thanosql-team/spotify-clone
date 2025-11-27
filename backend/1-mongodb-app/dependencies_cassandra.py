@@ -48,6 +48,16 @@ def get_cassandra_session():
             PRIMARY KEY (user_id, change_time)
         ) WITH CLUSTERING ORDER BY (change_time DESC);
     """)
+    session.execute("""
+        CREATE TABLE IF NOT EXISTS entity_changes_all (
+            entity_type TEXT,
+            change_time TIMESTAMP,
+            user_id TEXT,
+            entity_id TEXT,
+            action TEXT,
+            PRIMARY KEY (entity_type, change_time)
+        ) WITH CLUSTERING ORDER BY (change_time DESC);
+    """)
 
     return session
 
