@@ -4,7 +4,7 @@ University NoSQL course group project: a Spotify-like app handling large-scale d
 # Installation:
 If you haven't already set up **git**, see https://docs.github.com/en/get-started/git-basics/set-up-git
 
-For setting up the environment, see the appropriate project's, located in assignments/, README.md
+For setting up the environment, see the **Setting up the environment** section
 
 ## Running the Program
 
@@ -39,3 +39,31 @@ Stop and clean up containers:
 
 Cassandra requires a clean and graceful shutdown to ensure data integrity.
 Always run `docker compose down` before closing your environment or powering off your machine.
+
+## Setting up environment
+
+### Installing project / dependencies
+
+1. Follow https://docs.astral.sh/uv/getting-started/ to install and get introduced to **uv** - a Python package and project manager
+
+1. See https://docs.astral.sh/uv/getting-started/installation/#shell-autocompletion for getting autocompletion in your terminal for uv and uvx commands
+
+1. Make sure uv is updated to the latest version:\
+`uv self update`
+
+1. Change current directory to the project folder:\
+`cd assignments/1-mongodb-app`
+
+1. Update the project's environment:\
+`uv sync`
+
+1. `uv run fastapi dev` should then successfully run fastapi, https://fastapi.tiangolo.com/, which would automatically locate the modules in the project's working directory
+
+### Linter/formatter
+
+Ruff: see https://docs.astral.sh/ruff/editors/setup/ to setup ruff in your Python editor
+
+### Type checking
+
+Pylance: see https://docs.pydantic.dev/latest/integrations/visual_studio_code/#configure-your-environment to set up Pylance in VSCode (set the Type Checking Mode to `basic`), or equivalently set it up in your Python editor
+For setting up the environment, see the appropriate project's, located in assignments/, README.md
