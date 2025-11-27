@@ -1,5 +1,4 @@
 import os
-
 from cassandra.cluster import Cluster
 from cassandra.query import SimpleStatement
 from datetime import datetime
@@ -49,13 +48,13 @@ def get_cassandra_session():
         ) WITH CLUSTERING ORDER BY (change_time DESC);
     """)
     session.execute("""
-        CREATE TABLE IF NOT EXISTS entity_changes_all (
+        CREATE TABLE IF NOT EXISTS entity_changes_by_entity_action (
             entity_type TEXT,
+            action TEXT,
             change_time TIMESTAMP,
             user_id TEXT,
             entity_id TEXT,
-            action TEXT,
-            PRIMARY KEY (entity_type, change_time)
+            PRIMARY KEY ((entity_type, action), change_time)
         ) WITH CLUSTERING ORDER BY (change_time DESC);
     """)
 

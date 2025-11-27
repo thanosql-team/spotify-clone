@@ -192,7 +192,6 @@ async def update_user(id: str, user: UpdateUserModel = Body(...)):
 async def delete_user(id: str):
     """
     Remove a single user record from the database.
-    - Invalidates all related caches
     """
     delete_result = await user_collection.delete_one({"_id": ObjectId(id)})
     if delete_result.deleted_count == 1:

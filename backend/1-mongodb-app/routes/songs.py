@@ -102,8 +102,6 @@ async def create_song(song: SongModel = Body(...)):
     """
     Insert a new song record.
     A unique ``id`` will be created and provided in the response.
-    
-    ⚡ Cache Strategy: Active invalidation
     - Invalidates artist aggregation cache when new song is created
     """
     new_song = song.model_dump(by_alias=True, exclude=["id"]) # type: ignore
@@ -117,7 +115,7 @@ async def create_song(song: SongModel = Body(...)):
     result = await song_collection.insert_one(new_song)
     new_song["_id"] = result.inserted_id
     
-    # ⚡ Invalidate aggregation caches
+    # Invalidate aggregation caches
     await cache_manager.invalidate_song_cache(str(result.inserted_id))
     
     return new_song
@@ -132,8 +130,6 @@ async def list_songs():
     """
     List all the song data in the database.
     The response is unpaginated and limited to 1000 results.
-    
-    ⚡ Cache Strategy: TTL-based caching (5 minutes)
     - Reduces database load for frequent list requests
     - Invalidated on: create, update, delete song
     """
@@ -314,9 +310,6 @@ async def update_song(id: str, song: UpdateSongModel = Body(...)):
 async def delete_song(id: str):
     """
     Remove a single song record from the database.
-    
-    Cache Strategy: Active invalidation
-    - Invalidates all related caches
     """
     delete_result = await song_collection.delete_one({"_id": ObjectId(id)})
     if delete_result.deleted_count == 1:

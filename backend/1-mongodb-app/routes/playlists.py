@@ -97,8 +97,6 @@ async def create_playlist(playlist: PlaylistModel = Body(...)):
     """
     Insert a new playlist record.
     A unique ``id`` will be created and provided in the response.
-    
-    ⚡ Cache Strategy: Active invalidation
     - Invalidates playlist aggregations when new playlist created
     """
     new_playlist = playlist.model_dump(by_alias=True, exclude=["id"]) # type: ignore
@@ -114,7 +112,7 @@ async def create_playlist(playlist: PlaylistModel = Body(...)):
     result = await playlist_collection.insert_one(new_playlist)
     new_playlist["_id"] = result.inserted_id
 
-    # 🧾 Log CREATE in Cassandra
+    # Log CREATE in Cassandra
     await log_playlist_change(
         playlist_id=str(result.inserted_id),
         user_id=str(playlist.user_id) if playlist.user_id else "unknown",
