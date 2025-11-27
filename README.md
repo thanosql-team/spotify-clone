@@ -6,22 +6,39 @@ If you haven't already set up **git**, see https://docs.github.com/en/get-starte
 
 For setting up the environment, see the **Setting up the environment** section
 
-# 1 Aplikacija su MongoDB
+## Running the Program
 
-Parašykite programą pagal pasirinktą temą naudodami MongoDB.
+Install dependencies:  
+* In terminal run `uv sync`
 
-Reikalavimai:
+Got to the root: 
+* Go to this folder in terminal `..\Github\spotify-clone`
 
-1. Ne mažiau nei 4 esybės (fizinių kolekcijų gali ir tikėtina bus - mažiau).
-1. Programos funkcionalumą pademonstruoti naudojant API kvietimus (pvz. naudojant Postman, Insomnia, ARC, curl) arba vartotojo sąsają
-1. Pridėti duomenų modelio diagramą
+Start the full stack: 
+* Once in the right root run `docker compose up -d`
 
-Programa turi būti prasminga ir įgyvendinti funkcionalumą laikydamasi šių prielaidų:
+Update changes:
 
-1. Programos funkcionalumas turi būti realistiškas.
-2. Duomenų gali būti daug, taigi modelis ir sprendimai turi į tai atsižvelgti.
+* Whenever you modify backend Python files, you should verify that the backend container detects and reloads the changes. Run `docker logs -f spotify-backend`
 
-! UŽDUOTIS įkelia komandos kapitonas !
+You should see something similar to:
+
+    WARNING:  WatchFiles detected changes in '1-mongodb-app/change_logs.py'. Reloading...
+    INFO:     Shutting down
+    INFO:     Waiting for application shutdown.
+    INFO:     Application shutdown complete.
+    INFO:     Finished server process [727]
+    INFO:     Started server process [791]
+    INFO:     Waiting for application startup.
+    INFO:     Application startup complete.
+
+Stop and clean up containers:
+* Once you finish using the program run `docker compose down`
+
+**Important Note — Avoid Data Loss & Cassandra Corruption**
+
+Cassandra requires a clean and graceful shutdown to ensure data integrity.
+Always run `docker compose down` before closing your environment or powering off your machine.
 
 ## Setting up environment
 
@@ -49,3 +66,4 @@ Ruff: see https://docs.astral.sh/ruff/editors/setup/ to setup ruff in your Pytho
 ### Type checking
 
 Pylance: see https://docs.pydantic.dev/latest/integrations/visual_studio_code/#configure-your-environment to set up Pylance in VSCode (set the Type Checking Mode to `basic`), or equivalently set it up in your Python editor
+For setting up the environment, see the appropriate project's, located in assignments/, README.md
