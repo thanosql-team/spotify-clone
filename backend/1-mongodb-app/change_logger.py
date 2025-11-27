@@ -31,6 +31,13 @@ async def log_album_change(album_id: str, user_id: str, action: str, old_data: d
         """,
         (user_id, now, "album", album_id, action)
     )
+    session.execute(
+        """
+        INSERT INTO entity_changes_all (entity_type, change_time, user_id, entity_id, action)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        ("album", now, user_id, album_id, action)
+    )
 
 async def log_playlist_change(playlist_id: str, user_id: str, action: str, old_data: dict | None, new_data: dict | None):
     now = datetime.utcnow()
@@ -47,4 +54,11 @@ async def log_playlist_change(playlist_id: str, user_id: str, action: str, old_d
         VALUES (%s, %s, %s, %s, %s)
         """,
         (user_id, now, "playlist", playlist_id, action)
+    )
+    session.execute(
+        """
+        INSERT INTO entity_changes_all (entity_type, change_time, user_id, entity_id, action)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        ("playlist", now, user_id, playlist_id, action)
     )
