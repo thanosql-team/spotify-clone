@@ -30,7 +30,7 @@ class SongModel(BaseModel):
     name: str = Field(...)
     artist: str = Field(...)
     genre: str = Field(...)
-    release_year: str = Field(...)
+    release_year: int = Field(...)
     duration: int = Field(..., description="Song duration in seconds")
     album_name: str | None = Field(default=None)
     album_ID: PyObjectId | None = Field(default=None)
@@ -63,7 +63,7 @@ class UpdateSongModel(BaseModel):
     artist: str | None = None
     genre: str | None = None
     release_year: int | None = None
-    duration: str | None = None
+    duration: int | None = None
     album_name: str | None = None
     album_ID: PyObjectId | None = None
     playlist_name: str | None = None
