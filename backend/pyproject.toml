@@ -13,4 +13,5 @@ dependencies = [
     "redis>=5.0.0",
     "aioredis>=2.0.0",
     "cassandra-driver>=3.29.3",
+    "neo4j>=5.26.0",
 ]
