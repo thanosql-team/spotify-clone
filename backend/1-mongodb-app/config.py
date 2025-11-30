@@ -4,9 +4,17 @@ class Settings(BaseSettings):
     # Use top level .env file (one level above ./backend/) to add one-liner:
     # MONGODB_URL="yourconnectionstring"
     # REDIS_URL="redis://localhost:6379/0"
+    # NEO4J_URI="bolt://localhost:7687"
+    # NEO4J_USER="neo4j"
+    # NEO4J_PASSWORD="password"
     model_config = SettingsConfigDict(env_file="../../.env", env_file_encoding="utf-8")
     mongodb_url: str | None = None
     redis_url: str = "redis://localhost:6379/0"
+    
+    # Neo4j configuration
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "password"
     
     db_name: str = "spotify-clone"
     

@@ -1,0 +1,130 @@
+Neo4j Graph Schema for Spotify Clone - Recommendation System
+=============================================================
+
+NODES (Viršūnės) - 4 skirtingos esybės
+======================================
+
+(:User)
+  - user_id: string (MongoDB ObjectId, duplikuojama)
+  
+(:Song)
+  - song_id: string (MongoDB ObjectId, duplikuojama)
+  - name: string
+  
+(:Artist)
+  - name: string (unique)
+  
+(:Genre)
+  - name: string (unique)
+
+
+RELATIONSHIPS (Briaunos)
+========================
+
+(:User)-[:LISTENED_TO {timestamp: datetime}]->(:Song)
+  - Užfiksuoja, kada vartotojas klausėsi dainos
+  
+(:User)-[:LIKES {timestamp: datetime}]->(:Song)
+  - Vartotojas pamėgo dainą
+  
+(:User)-[:FOLLOWS {since: datetime}]->(:User)
+  - Socialinis sekimas tarp vartotojų
+  
+(:Song)-[:PERFORMED_BY]->(:Artist)
+  - Daina atlikta atlikėjo
+  
+(:Song)-[:BELONGS_TO_GENRE]->(:Genre)
+  - Daina priklauso žanrui
+
+
+VISUAL DIAGRAM
+==============
+
+                    ┌──────────┐
+                    │  Genre   │
+                    │  (name)  │
+                    └────▲─────┘
+                         │ BELONGS_TO_GENRE
+                         │
+    ┌────────┐      ┌────┴─────┐
+    │ Artist │◄─────│   Song   │
+    │ (name) │      │(song_id, │
+    └────────┘      │  name)   │
+         ▲          └────▲─────┘
+         │               │
+    PERFORMED_BY   LISTENED_TO / LIKES
+                         │
+                    ┌────┴─────┐
+                    │   User   │
+                    │(user_id) │
+                    └────┬─────┘
+                         │
+                         │ FOLLOWS
+                         ▼
+                    ┌──────────┐
+                    │   User   │
+                    └──────────┘
+
+
+DEEP QUERIES (Gilios užklausos) - 3 užklausos
+=============================================
+
+1. SIMILAR LISTENERS RECOMMENDATIONS (Neapibrėžto gylio)
+   -----------------------------------------------------
+   Endpoint: GET /graph/recommendations/similar-listeners/{user_id}?depth=2
+   
+   Algoritmas (panašus į prekių krepšelio analizę):
+   - Randa vartotojus, kurie klausėsi tų pačių dainų
+   - Eina gilyn per FOLLOWS ryšius (gylis konfigūruojamas 1-5)
+   - Rekomenduoja dainas, kurių tiksinis vartotojas dar neklausė
+   
+   Kelias: User → Song ← User → [FOLLOWS*N] → User → Song
+   
+2. GENRE/ARTIST DISCOVERY (Per žanrus/atlikėjus)
+   ----------------------------------------------
+   Endpoint: GET /graph/recommendations/genre-discovery/{user_id}?max_hops=3
+   
+   Algoritmas:
+   - Prasideda nuo mėgstamų dainų
+   - Keliauja per atlikėjus ir žanrus
+   - Atranda naujas dainas gretimuose žanruose
+   
+   Kelias: User → Song → Artist → Song → Genre
+   
+3. SHORTEST PATH (Trumpiausias kelias)
+   ------------------------------------
+   Endpoint: GET /graph/recommendations/shortest-path?from_song_id=X&to_song_id=Y
+   
+   Algoritmas:
+   - Randa trumpiausią kelią tarp dviejų dainų
+   - Per atlikėjus ir žanrus
+   - Panašu į "6 laipsnių atskyrimo" koncepciją
+   
+   Naudojimas: "Kaip šios dainos susijusios?"
+
+
+API ENDPOINTS (Supaprastinta)
+=============================
+
+# Duomenų įvedimas
+POST /graph/listen          - Įrašyti klausymo įvykį
+POST /graph/like            - Įrašyti "patinka" įvykį  
+POST /graph/follow          - Sekti vartotoją
+
+# Rekomendacijos (gilios užklausos)
+GET /graph/recommendations/similar-listeners/{user_id}?depth=2&limit=10
+GET /graph/recommendations/genre-discovery/{user_id}?max_hops=3&limit=10
+GET /graph/recommendations/shortest-path?from_song_id=...&to_song_id=...
+
+# Statistika
+GET /graph/stats/{user_id}
+GET /graph/overview
+
+
+CONSTRAINTS (Apribojimai)
+=========================
+
+CREATE CONSTRAINT user_id IF NOT EXISTS FOR (u:User) REQUIRE u.user_id IS UNIQUE
+CREATE CONSTRAINT song_id IF NOT EXISTS FOR (s:Song) REQUIRE s.song_id IS UNIQUE
+CREATE CONSTRAINT artist_name IF NOT EXISTS FOR (a:Artist) REQUIRE a.name IS UNIQUE
+CREATE CONSTRAINT genre_name IF NOT EXISTS FOR (g:Genre) REQUIRE g.name IS UNIQUE
