@@ -7,15 +7,12 @@ ENTITIES (Nodes):
 
 RELATIONSHIPS:
 - LISTENED_TO: user listened to a song
-- LIKES: user liked a song
-- FOLLOWS: user follows another user
 - PERFORMED_BY: song performed by artist
 - BELONGS_TO_GENRE: song belongs to genre
 """
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel, Field
-from typing import Optional
+from bson import ObjectId
 
 from ..dependencies_neo4j import get_neo4j
 
@@ -25,356 +22,275 @@ router = APIRouter(
     responses={404: {"description": "Not found"}}
 )
 
-class ListenEvent(BaseModel):
-    """Record when a user listens to a song"""
-    user_id: str = Field(..., description="MongoDB User ID")
-    song_id: str = Field(..., description="MongoDB Song ID")
-    song_name: str = Field(..., description="Song name for display")
-    artist_name: str = Field(..., description="Artist name")
-    genre: str = Field(..., description="Song genre")
-    
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "user_id": "652e9f3b9b1d8e77a9b5d222",
-                "song_id": "652e9f3b9b1d8e77a9b5d333",
-                "song_name": "Bohemian Rhapsody",
-                "artist_name": "Queen",
-                "genre": "Rock"
-            }
-        }
-    }
-
-
-class LikeEvent(BaseModel):
-    """Record when a user likes a song"""
-    user_id: str
-    song_id: str
-    song_name: str
-    artist_name: str
-    genre: str
-
-
-class FollowEvent(BaseModel):
-    """Record when a user follows another user"""
-    follower_id: str = Field(..., description="User who is following")
-    followed_id: str = Field(..., description="User being followed")
-
-# Data Input Endpoints - Populate the Graph
-
-@router.post("/listen", status_code=status.HTTP_201_CREATED)
-async def record_listen(event: ListenEvent):
-    """
-    Record that a user listened to a song.
-    Creates User, Song, Artist, Genre nodes and relationships.
-    """
-    neo4j = await get_neo4j()
-    
-    query = """
-    MERGE (u:User {user_id: $user_id})
-    MERGE (s:Song {song_id: $song_id})
-    ON CREATE SET s.name = $song_name
-    
-    MERGE (a:Artist {name: $artist_name})
-    MERGE (g:Genre {name: $genre})
-    
-    MERGE (s)-[:PERFORMED_BY]->(a)
-    MERGE (s)-[:BELONGS_TO_GENRE]->(g)
-    
-    CREATE (u)-[:LISTENED_TO {timestamp: datetime()}]->(s)
-    
-    RETURN u.user_id as user_id, s.name as song_name
-    """
-    
-    result = await neo4j.execute_query(query, {
-        "user_id": event.user_id,
-        "song_id": event.song_id,
-        "song_name": event.song_name,
-        "artist_name": event.artist_name,
-        "genre": event.genre
-    })
-    
-    return {"message": "Listen event recorded", "data": result}
-
-
-@router.post("/like", status_code=status.HTTP_201_CREATED)
-async def record_like(event: LikeEvent):
-    """
-    Record that a user liked a song.
-    """
-    neo4j = await get_neo4j()
-    
-    query = """
-    MERGE (u:User {user_id: $user_id})
-    MERGE (s:Song {song_id: $song_id})
-    ON CREATE SET s.name = $song_name
-    
-    MERGE (a:Artist {name: $artist_name})
-    MERGE (g:Genre {name: $genre})
-    
-    MERGE (s)-[:PERFORMED_BY]->(a)
-    MERGE (s)-[:BELONGS_TO_GENRE]->(g)
-    
-    MERGE (u)-[r:LIKES]->(s)
-    ON CREATE SET r.timestamp = datetime()
-    
-    RETURN u.user_id as user_id, s.name as song_name
-    """
-    
-    result = await neo4j.execute_query(query, {
-        "user_id": event.user_id,
-        "song_id": event.song_id,
-        "song_name": event.song_name,
-        "artist_name": event.artist_name,
-        "genre": event.genre
-    })
-    
-    return {"message": "Like recorded", "data": result}
-
-
-@router.post("/follow", status_code=status.HTTP_201_CREATED)
-async def follow_user(event: FollowEvent):
-    """
-    Record that one user follows another (for social recommendations).
-    """
-    neo4j = await get_neo4j()
-    
-    query = """
-    MERGE (follower:User {user_id: $follower_id})
-    MERGE (followed:User {user_id: $followed_id})
-    
-    MERGE (follower)-[r:FOLLOWS]->(followed)
-    ON CREATE SET r.since = datetime()
-    
-    RETURN follower.user_id as follower, followed.user_id as followed
-    """
-    
-    result = await neo4j.execute_query(query, {
-        "follower_id": event.follower_id,
-        "followed_id": event.followed_id
-    })
-    
-    return {"message": "Follow relationship created", "data": result}
-
-
-# RECOMMENDATION ENDPOINTS - Deep Graph Queries
-
-@router.get("/recommendations/similar-listeners/{user_id}")
-async def get_recommendations_from_similar_listeners(
-    user_id: str,
-    depth: int = Query(default=2, ge=1, le=5, description="Traversal depth (1-5)"),
+@router.get("/recommendations/playlist/{playlist_id}")
+async def recommend_songs_for_playlist(
+    playlist_id: str,
     limit: int = Query(default=10, ge=1, le=50)
 ):
     """
-    DEEP QUERY #1: Recommendations based on similar listeners.
-
-    1. Find users who listened to the same songs
-    2. Traverse deep through social connections (FOLLOWS) up to specified depth
-    3. Recommend songs that the target user hasn't heard yet
+    Playlist-based song recommendations.
     
-    Depth is configurable (1-5), allowing "friends of friends" recommendations.
+    Finds songs with matching genres and artists from the playlist,
+    ranked by relevance (artist match > genre match).
     """
+    from ..dependencies import db
     neo4j = await get_neo4j()
+    playlist_collection = db.get_collection("playlists")
     
-    # depth setting in Cypher query
-    query = f"""
-    // Songs that the user has already listened to
-    MATCH (me:User {{user_id: $user_id}})-[:LISTENED_TO|LIKES]->(mySong:Song)
-    WITH me, collect(DISTINCT mySong) as mySongs
+    playlist = await playlist_collection.find_one({"_id": ObjectId(playlist_id)})
+    if not playlist:
+        raise HTTPException(status_code=404, detail="Playlist not found")
     
-    // Find similar users (listened to the same songs)
-    MATCH (me)-[:LISTENED_TO|LIKES]->(:Song)<-[:LISTENED_TO|LIKES]-(similar:User)
-    WHERE similar <> me
-    
-    // Traverse deep through FOLLOWS relationships (variable depth)
-    MATCH path = (similar)-[:FOLLOWS*0..{depth - 1}]->(deepUser:User)
-    WHERE deepUser <> me
-    
-    // Find songs that "deep" users like but I haven't listened to
-    MATCH (deepUser)-[:LISTENED_TO|LIKES]->(recSong:Song)
-    WHERE NOT recSong IN mySongs
-    
-    // Get song information
-    OPTIONAL MATCH (recSong)-[:PERFORMED_BY]->(artist:Artist)
-    OPTIONAL MATCH (recSong)-[:BELONGS_TO_GENRE]->(genre:Genre)
-    
-    // Calculate popularity and distance
-    WITH recSong, artist, genre, 
-         count(DISTINCT deepUser) as popularity,
-         min(length(path)) as distance
-    
-    RETURN recSong.song_id as song_id,
-           recSong.name as song_name,
-           artist.name as artist,
-           genre.name as genre,
-           popularity,
-           distance,
-           popularity * 1.0 / (distance + 1) as score
-    ORDER BY score DESC
-    LIMIT $limit
-    """
-    
-    results = await neo4j.execute_query(query, {
-        "user_id": user_id,
-        "limit": limit
-    })
-    
-    return {
-        "user_id": user_id,
-        "depth": depth,
-        "algorithm": "similar_listeners",
-        "recommendations": results
-    }
-
-
-@router.get("/recommendations/genre-discovery/{user_id}")
-async def discover_through_genres(
-    user_id: str,
-    max_hops: int = Query(default=3, ge=1, le=6, description="Max hops through artists/genres"),
-    limit: int = Query(default=10, ge=1, le=50)
-):
-    """
-    DEEP QUERY #2: Genre/Artist chain discovery.
-    
-    1. Start from songs the user likes
-    2. Go through artists and genres (variable depth)
-    3. Discover new songs through these chains
-    
-    Example: Like Rock -> Rock artist -> their other songs -> Metal genre -> Metal songs
-    """
-    neo4j = await get_neo4j()
-    
-    query = f"""
-    // Songs that the user has listened to
-    MATCH (me:User {{user_id: $user_id}})-[:LISTENED_TO|LIKES]->(liked:Song)
-    WITH me, collect(DISTINCT liked) as likedSongs
-    
-    // Traverse through artists - find their other songs
-    MATCH (me)-[:LISTENED_TO|LIKES]->(:Song)-[:PERFORMED_BY]->(artist:Artist)
-    MATCH (artist)<-[:PERFORMED_BY]-(otherSong:Song)
-    WHERE NOT otherSong IN likedSongs
-    
-    // Get genre
-    OPTIONAL MATCH (otherSong)-[:BELONGS_TO_GENRE]->(genre:Genre)
-    
-    WITH DISTINCT otherSong, artist, genre, likedSongs
-    
-    RETURN otherSong.song_id as song_id,
-           otherSong.name as song_name,
-           artist.name as artist,
-           genre.name as genre,
-           1.0 as relevance_score
-    ORDER BY relevance_score DESC
-    LIMIT $limit
-    """
-    
-    results = await neo4j.execute_query(query, {
-        "user_id": user_id,
-        "limit": limit
-    })
-    
-    return {
-        "user_id": user_id,
-        "max_hops": max_hops,
-        "algorithm": "genre_discovery",
-        "recommendations": results
-    }
-
-
-@router.get("/recommendations/shortest-path")
-async def find_song_connection(
-    from_song_id: str = Query(..., description="Starting song ID"),
-    to_song_id: str = Query(..., description="Target song ID"),
-    max_depth: int = Query(default=6, ge=1, le=10)
-):
-    """
-    DEEP QUERY #3: Shortest path between songs.
-
-    - Finds the shortest path between two songs, Through artists and genres
-    """
-    neo4j = await get_neo4j()
-    
-    query = f"""
-    MATCH (start:Song {{song_id: $from_song}}), (end:Song {{song_id: $to_song}})
-    
-    MATCH path = shortestPath(
-        (start)-[:PERFORMED_BY|BELONGS_TO_GENRE*1..{max_depth}]-(end)
-    )
-    
-    RETURN [node in nodes(path) | 
-        CASE 
-            WHEN 'Song' IN labels(node) THEN {{type: 'Song', id: node.song_id, name: node.name}}
-            WHEN 'Artist' IN labels(node) THEN {{type: 'Artist', name: node.name}}
-            WHEN 'Genre' IN labels(node) THEN {{type: 'Genre', name: node.name}}
-            ELSE {{type: 'Unknown'}}
-        END
-    ] as path_nodes,
-    length(path) as path_length,
-    [rel in relationships(path) | type(rel)] as relationship_types
-    """
-    
-    results = await neo4j.execute_query(query, {
-        "from_song": from_song_id,
-        "to_song": to_song_id
-    })
-    
-    if not results:
+    song_ids = [str(sid) for sid in playlist.get("song_ID", [])]
+    if not song_ids:
         return {
-            "from_song": from_song_id,
-            "to_song": to_song_id,
-            "connected": False,
-            "message": f"No connection found within {max_depth} hops"
+            "playlist_id": playlist_id,
+            "recommendations": [],
+            "message": "Playlist is empty"
         }
+        
+    # Counts frequency of each genre in playlist
+    # Counts frequency of each artist
+    # Computes a score = genre match weight + artist match weight
+    # Returns songs ordered by total score
+    
+    query = """
+    MATCH (targetSong:Song)
+    WHERE targetSong.song_id IN $song_ids
+
+    // Collect playlist genres
+    MATCH (targetSong)-[:BELONGS_TO_GENRE]->(tg:Genre)
+    WITH collect(tg.name) AS allGenres, $song_ids AS song_ids
+
+    // Genre weights
+    UNWIND allGenres AS g
+    WITH song_ids, g, count(g) AS genre_weight
+    WITH song_ids, collect({genre: g, weight: genre_weight}) AS genreWeights
+
+    // Collect playlist artists
+    MATCH (ts:Song)
+    WHERE ts.song_id IN song_ids
+    MATCH (ts)-[:PERFORMED_BY]->(ta:Artist)
+    WITH song_ids, genreWeights, collect(ta.name) AS allArtists
+
+    // Artist weights
+    UNWIND allArtists AS a
+    WITH song_ids, genreWeights, a, count(a) AS artist_weight
+    WITH song_ids, genreWeights, collect({artist: a, weight: artist_weight}) AS artistWeights
+
+    // Score candidate songs
+    MATCH (similar:Song)
+    WHERE NOT similar.song_id IN song_ids
+    OPTIONAL MATCH (similar)-[:BELONGS_TO_GENRE]->(sg:Genre)
+    OPTIONAL MATCH (similar)-[:PERFORMED_BY]->(sa:Artist)
+    WITH similar, sg, sa, genreWeights, artistWeights,
+
+        // Genre score
+        reduce(gScore = 0, gw IN genreWeights |
+            CASE WHEN sg.name = gw.genre THEN gScore + gw.weight ELSE gScore END
+        ) AS genreScore,
+
+        // Artist score
+        reduce(aScore = 0, aw IN artistWeights |
+            CASE WHEN sa.name = aw.artist THEN aScore + (aw.weight * 3) ELSE aScore END
+        ) AS artistScore
+
+    WITH similar,
+        coalesce(genreScore, 0) AS genreScore,
+        coalesce(artistScore, 0) AS artistScore,
+        (genreScore + artistScore) AS relevance,
+        sa, sg
+
+    RETURN similar.song_id AS song_id,
+        similar.name AS song_name,
+        collect(DISTINCT sa.name) AS artists,
+        collect(DISTINCT sg.name) AS genres,
+        relevance
+    ORDER BY relevance DESC, song_name ASC
+    LIMIT $limit
+    """
+    
+    results = await neo4j.execute_query(query, {
+        "song_ids": song_ids,
+        "limit": limit
+    })
     
     return {
-        "from_song": from_song_id,
-        "to_song": to_song_id,
-        "connected": True,
-        "path": results[0] if results else None
+        "playlist_id": playlist_id,
+        "recommendations": results
     }
 
-# Analytics /- Endpoints
-
-@router.get("/stats/{user_id}")
-async def get_user_stats(user_id: str):
+@router.get("/recommendations/deep/{user_id}")
+async def deep_graph_recommendations(
+    user_id: str,
+    limit: int = Query(default=10, ge=1, le=50)
+):
     """
-    Get user graph statistics: listened songs, liked songs, following count.
+    Deep Graph Search (Gili Paieška)
+
+    Finds similar users based on shared music preferences (artists/genres)
+    and recommends songs from those users, even when no songs overlap.
     """
     neo4j = await get_neo4j()
-    
+
     query = """
     MATCH (u:User {user_id: $user_id})
     
-    OPTIONAL MATCH (u)-[listened:LISTENED_TO]->(:Song)
-    OPTIONAL MATCH (u)-[liked:LIKES]->(:Song)
-    OPTIONAL MATCH (u)-[:FOLLOWS]->(following:User)
-    OPTIONAL MATCH (follower:User)-[:FOLLOWS]->(u)
+    // Get user's preferred artists and genres
+    MATCH (u)-[:LISTENED_TO]->(userSong:Song)
+    OPTIONAL MATCH (userSong)-[:PERFORMED_BY]->(userArtist:Artist)
+    OPTIONAL MATCH (userSong)-[:BELONGS_TO_GENRE]->(userGenre:Genre)
     
-    OPTIONAL MATCH (u)-[:LISTENED_TO|LIKES]->(:Song)-[:BELONGS_TO_GENRE]->(genre:Genre)
-    OPTIONAL MATCH (u)-[:LISTENED_TO|LIKES]->(:Song)-[:PERFORMED_BY]->(artist:Artist)
+    WITH u, 
+         collect(DISTINCT userArtist.name) AS userArtists,
+         collect(DISTINCT userGenre.name) AS userGenres
     
-    RETURN u.user_id as user_id,
-           count(DISTINCT listened) as total_listens,
-           count(DISTINCT liked) as total_likes,
-           count(DISTINCT following) as following_count,
-           count(DISTINCT follower) as follower_count,
-           collect(DISTINCT genre.name)[0..5] as top_genres,
-           collect(DISTINCT artist.name)[0..5] as top_artists
+    // Find other users and calculate similarity
+    MATCH (other:User)
+    WHERE other.user_id <> $user_id
+    
+    MATCH (other)-[:LISTENED_TO]->(otherSong:Song)
+    OPTIONAL MATCH (otherSong)-[:PERFORMED_BY]->(otherArtist:Artist)
+    OPTIONAL MATCH (otherSong)-[:BELONGS_TO_GENRE]->(otherGenre:Genre)
+    
+    WITH u, userArtists, userGenres, other,
+         collect(DISTINCT otherArtist.name) AS otherArtists,
+         collect(DISTINCT otherGenre.name) AS otherGenres
+    
+    // Calculate similarity scores
+    WITH u, other,
+         // Artist similarity (weighted more heavily)
+         size([a IN userArtists WHERE a IN otherArtists]) * 3 AS artistSimilarity,
+         // Genre similarity  
+         size([g IN userGenres WHERE g IN otherGenres]) * 1 AS genreSimilarity,
+         otherArtists, otherGenres
+    
+    WITH u, other, 
+         (artistSimilarity + genreSimilarity) AS totalSimilarity,
+         otherArtists, otherGenres
+    WHERE totalSimilarity > 0
+    
+    // Get recommendations from similar users
+    MATCH (other)-[:LISTENED_TO]->(recommendedSong:Song)
+    WHERE NOT (u)-[:LISTENED_TO]->(recommendedSong)
+    
+    OPTIONAL MATCH (recommendedSong)-[:PERFORMED_BY]->(ra:Artist)
+    OPTIONAL MATCH (recommendedSong)-[:BELONGS_TO_GENRE]->(rg:Genre)
+    
+    // Boost score if recommended song has familiar artists/genres
+    WITH recommendedSong, totalSimilarity, ra, rg, u,
+         collect(DISTINCT ra.name) AS recArtists,
+         collect(DISTINCT rg.name) AS recGenres
+    
+    MATCH (u)-[:LISTENED_TO]->(userSong:Song)
+    OPTIONAL MATCH (userSong)-[:PERFORMED_BY]->(ua:Artist)  
+    OPTIONAL MATCH (userSong)-[:BELONGS_TO_GENRE]->(ug:Genre)
+    
+    WITH recommendedSong, totalSimilarity, recArtists, recGenres,
+         collect(DISTINCT ua.name) AS userArtists,
+         collect(DISTINCT ug.name) AS userGenres
+    
+    WITH recommendedSong,
+         totalSimilarity +
+         size([a IN recArtists WHERE a IN userArtists]) * 2 +  // Bonus for familiar artist
+         size([g IN recGenres WHERE g IN userGenres]) * 1      // Bonus for familiar genre
+         AS finalScore,
+         recArtists, recGenres
+    
+    RETURN DISTINCT recommendedSong.song_id AS song_id,
+           recommendedSong.name AS song_name,
+           recArtists AS artists,
+           recGenres AS genres,
+           finalScore AS relevance
+    ORDER BY relevance DESC, song_name ASC
+    LIMIT $limit
     """
-    
-    results = await neo4j.execute_query(query, {"user_id": user_id})
-    
-    if not results or not results[0].get("user_id"):
-        raise HTTPException(status_code=404, detail="User not found in graph")
-    
-    return results[0]
 
+    results = await neo4j.execute_query(query, {
+        "user_id": user_id,
+        "limit": limit
+    })
+
+    return {
+        "user_id": user_id,
+        "deep_recommendations": results
+    }
+
+@router.post("/sync-playlist/{playlist_id}")
+async def sync_playlist_to_neo4j(playlist_id: str):
+    """
+    Sync a playlist and create LISTENED_TO relationships.
+    """
+    from ..dependencies import db
+    neo4j = await get_neo4j()
+    
+    playlist_collection = db.get_collection("playlists")
+    song_collection = db.get_collection("songs")
+    
+    playlist = await playlist_collection.find_one({"_id": ObjectId(playlist_id)})
+    if not playlist:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    
+    user_id = str(playlist.get("user_id", "unknown"))
+    song_ids = playlist.get("song_ID", [])
+    
+    await neo4j.execute_query("""
+        MERGE (u:User {user_id: $user_id})
+    """, {"user_id": user_id})
+    
+    synced_songs = 0
+    
+    for song_id in song_ids:
+        song = await song_collection.find_one({"_id": ObjectId(song_id)})
+        if not song:
+            continue
+        
+        await neo4j.execute_query("""
+            MERGE (s:Song {song_id: $song_id})
+            SET s.name = $song_name
+            
+            MERGE (a:Artist {name: $artist_name})
+            MERGE (g:Genre {name: $genre})
+            
+            MERGE (s)-[:PERFORMED_BY]->(a)
+            MERGE (s)-[:BELONGS_TO_GENRE]->(g)
+            
+            WITH s
+            MATCH (u:User {user_id: $user_id})
+            MERGE (u)-[:LISTENED_TO]->(s)
+        """, {
+            "song_id": str(song_id),
+            "song_name": song.get("name", "Unknown"),
+            "artist_name": song.get("artist", "Unknown"),
+            "genre": song.get("genre", "Unknown"),
+            "user_id": user_id
+        })
+        synced_songs += 1
+    
+    return {
+        "message": "Playlist synced",
+        "synced_songs": synced_songs
+    }
+
+@router.post("/sync-all-playlists")
+async def sync_all_playlists():
+    from ..dependencies import db
+    neo4j = await get_neo4j()
+
+    playlist_collection = db.get_collection("playlists")
+    playlists = await playlist_collection.find().to_list(1000)
+
+    synced_count = 0
+    for playlist in playlists:
+        playlist_id = str(playlist["_id"])
+        await sync_playlist_to_neo4j(playlist_id)
+        synced_count += 1
+
+    return {"message": "All playlists synced", "count": synced_count}
 
 @router.get("/overview")
 async def get_graph_overview():
-    """
-    Get overall graph statistics: node counts, relationship counts.
-    """
+    """Get graph statistics."""
     neo4j = await get_neo4j()
     
     query = """
@@ -382,52 +298,35 @@ async def get_graph_overview():
     MATCH (s:Song) WITH users, count(s) as songs
     MATCH (a:Artist) WITH users, songs, count(a) as artists
     MATCH (g:Genre) WITH users, songs, artists, count(g) as genres
-    
     RETURN users, songs, artists, genres
     """
     
     results = await neo4j.execute_query(query)
-    
-    return {
-        "nodes": results[0] if results else {"users": 0, "songs": 0, "artists": 0, "genres": 0}
-    }
-
-
-# Sync Endpoint - data from MongoDB to Neo4j
+    return {"nodes": results[0] if results else {}}
 
 @router.post("/sync-from-mongodb", status_code=status.HTTP_201_CREATED)
 async def sync_songs_from_mongodb():
-    """
-    Sync all songs from MongoDB to Neo4j.
-    
-    Creates Song, Artist, Genre nodes and relationships between them.
-    This allows using recommendation features with existing data.
-    """
+    """Sync songs and users from MongoDB to Neo4j."""
     from ..dependencies import db
     
     neo4j = await get_neo4j()
     song_collection = db.get_collection("songs")
     user_collection = db.get_collection("users")
     
-    # Sync all songs
     songs = await song_collection.find().to_list(1000)
     synced_songs = 0
     
     for song in songs:
-        query = """
-        MERGE (s:Song {song_id: $song_id})
-        SET s.name = $song_name
-        
-        MERGE (a:Artist {name: $artist_name})
-        MERGE (g:Genre {name: $genre})
-        
-        MERGE (s)-[:PERFORMED_BY]->(a)
-        MERGE (s)-[:BELONGS_TO_GENRE]->(g)
-        
-        RETURN s.song_id as song_id
-        """
-        
-        await neo4j.execute_query(query, {
+        await neo4j.execute_query("""
+            MERGE (s:Song {song_id: $song_id})
+            SET s.name = $song_name
+            
+            MERGE (a:Artist {name: $artist_name})
+            MERGE (g:Genre {name: $genre})
+            
+            MERGE (s)-[:PERFORMED_BY]->(a)
+            MERGE (s)-[:BELONGS_TO_GENRE]->(g)
+        """, {
             "song_id": str(song.get("_id")),
             "song_name": song.get("name", "Unknown"),
             "artist_name": song.get("artist", "Unknown"),
@@ -435,18 +334,14 @@ async def sync_songs_from_mongodb():
         })
         synced_songs += 1
     
-    # Sync all users
     users = await user_collection.find().to_list(1000)
     synced_users = 0
     
     for user in users:
-        query = """
-        MERGE (u:User {user_id: $user_id})
-        SET u.username = $username
-        RETURN u.user_id as user_id
-        """
-        
-        await neo4j.execute_query(query, {
+        await neo4j.execute_query("""
+            MERGE (u:User {user_id: $user_id})
+            SET u.username = $username
+        """, {
             "user_id": str(user.get("_id")),
             "username": user.get("username", "Unknown")
         })
@@ -457,4 +352,3 @@ async def sync_songs_from_mongodb():
         "synced_songs": synced_songs,
         "synced_users": synced_users
     }
-
