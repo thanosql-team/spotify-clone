@@ -9,6 +9,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 
 from ..dependencies import db, cache_manager, get_settings
+from ..elasticsearch_sync import sync_song_to_elasticsearch
 
 router = APIRouter(
     prefix="/songs",
@@ -114,6 +115,13 @@ async def create_song(song: SongModel = Body(...)):
 
     result = await song_collection.insert_one(new_song)
     new_song["_id"] = result.inserted_id
+    
+    # Sync to Elasticsearch
+    await sync_song_to_elasticsearch(
+        song_id=str(result.inserted_id),
+        song_data=new_song,
+        action="index"
+    )
     
     # Invalidate aggregation caches
     await cache_manager.invalidate_song_cache(str(result.inserted_id))
@@ -295,6 +303,13 @@ async def update_song(id: str, song: UpdateSongModel = Body(...)):
             return_document=ReturnDocument.AFTER,
         )
         if update_result is not None:
+            # Sync to Elasticsearch
+            await sync_song_to_elasticsearch(
+                song_id=id,
+                song_data=update_result,
+                action="index"
+            )
+            
             # Invalidate caches
             await cache_manager.invalidate_song_cache(id)
             
@@ -313,6 +328,13 @@ async def delete_song(id: str):
     """
     delete_result = await song_collection.delete_one({"_id": ObjectId(id)})
     if delete_result.deleted_count == 1:
+        # Sync to Elasticsearch
+        await sync_song_to_elasticsearch(
+            song_id=id,
+            song_data=None,
+            action="delete"
+        )
+        
         # Invalidate caches
         await cache_manager.invalidate_song_cache(id)
         

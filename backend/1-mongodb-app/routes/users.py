@@ -9,6 +9,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 
 from ..dependencies import db, cache_manager, get_settings
+from ..elasticsearch_sync import sync_user_to_elasticsearch
 
 router = APIRouter(
     prefix="/users",
@@ -85,6 +86,14 @@ async def create_user(user: UserModel = Body(...)):
     new_user = user.model_dump(by_alias=True, exclude=["id"]) # type: ignore
     result = await user_collection.insert_one(new_user)
     new_user["_id"] = result.inserted_id
+    
+    # Sync to Elasticsearch
+    await sync_user_to_elasticsearch(
+        user_id=str(result.inserted_id),
+        user_data=new_user,
+        action="index"
+    )
+    
     # Invalidate list cache
     await cache_manager.delete_cache("list:users")
     
@@ -176,6 +185,13 @@ async def update_user(id: str, user: UpdateUserModel = Body(...)):
             return_document=ReturnDocument.AFTER,
         )
         if update_result is not None:
+            # Sync to Elasticsearch
+            await sync_user_to_elasticsearch(
+                user_id=id,
+                user_data=update_result,
+                action="index"
+            )
+            
             # Invalidate caches
             await cache_manager.delete_cache(f"user:{id}")
             await cache_manager.delete_cache("list:users")
@@ -195,6 +211,13 @@ async def delete_user(id: str):
     """
     delete_result = await user_collection.delete_one({"_id": ObjectId(id)})
     if delete_result.deleted_count == 1:
+        # Sync to Elasticsearch
+        await sync_user_to_elasticsearch(
+            user_id=id,
+            user_data=None,
+            action="delete"
+        )
+        
         # Invalidate caches
         await cache_manager.delete_cache(f"user:{id}")
         await cache_manager.delete_cache("list:users")
