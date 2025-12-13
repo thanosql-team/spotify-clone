@@ -10,6 +10,7 @@ from pymongo import ReturnDocument
 
 from ..dependencies import db, cache_manager, get_settings
 from ..change_logger import log_album_change
+from ..elasticsearch_sync import sync_album_to_elasticsearch
 
 router = APIRouter(
     prefix="/albums",
@@ -100,6 +101,13 @@ async def create_album(album: AlbumModel = Body(...)):
         
     result = await album_collection.insert_one(new_album)
     new_album["_id"] = result.inserted_id
+    
+    # Sync to Elasticsearch
+    await sync_album_to_elasticsearch(
+        album_id=str(result.inserted_id),
+        album_data=new_album,
+        action="index"
+    )
     
     # Log change to Cassandra
     await log_album_change(
@@ -283,6 +291,13 @@ async def update_album(id: str, album: UpdateAlbumModel = Body(...)):
             return_document=ReturnDocument.AFTER,
         )
         if update_result is not None:
+            # Sync to Elasticsearch
+            await sync_album_to_elasticsearch(
+                album_id=id,
+                album_data=update_result,
+                action="index"
+            )
+            
             # Invalidate caches
             await cache_manager.invalidate_album_cache(id)
 
@@ -316,6 +331,13 @@ async def delete_album(id: str):
     delete_result = await album_collection.delete_one({"_id": ObjectId(id)})
 
     if delete_result.deleted_count == 1:
+        # Sync to Elasticsearch
+        await sync_album_to_elasticsearch(
+            album_id=id,
+            album_data=None,
+            action="delete"
+        )
+        
         # Invalidate caches
         await cache_manager.invalidate_album_cache(id)
 

@@ -200,16 +200,25 @@ class ElasticsearchConnection:
         
         from elasticsearch.helpers import async_bulk
         
-        actions = [
-            {
+        actions = []
+        for doc in documents:
+            doc_id = doc.get("_id") or doc.get("song_id") or doc.get("album_id") or doc.get("playlist_id") or doc.get("user_id")
+            # Remove _id from source if it exists
+            source = {k: v for k, v in doc.items() if k != "_id"}
+            actions.append({
                 "_index": index,
-                "_id": doc.get("_id") or doc.get("song_id") or doc.get("album_id"),
-                "_source": doc
-            }
-            for doc in documents
-        ]
+                "_id": doc_id,
+                "_source": source
+            })
         
-        await async_bulk(self.client, actions)
+        try:
+            success, failed = await async_bulk(self.client, actions, raise_on_error=False, raise_on_exception=False)
+            if failed:
+                logger.warning(f"Some documents failed to index: {failed}")
+            return success, failed
+        except Exception as e:
+            logger.error(f"Bulk index error: {e}")
+            raise
 
 
 # Global Elasticsearch connection instance

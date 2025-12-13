@@ -10,6 +10,7 @@ from pymongo import ReturnDocument
 
 from ..dependencies import db, cache_manager, get_settings
 from ..change_logger import log_playlist_change
+from ..elasticsearch_sync import sync_playlist_to_elasticsearch
 
 router = APIRouter(
     prefix="/playlists",
@@ -111,6 +112,13 @@ async def create_playlist(playlist: PlaylistModel = Body(...)):
 
     result = await playlist_collection.insert_one(new_playlist)
     new_playlist["_id"] = result.inserted_id
+
+    # Sync to Elasticsearch
+    await sync_playlist_to_elasticsearch(
+        playlist_id=str(result.inserted_id),
+        playlist_data=new_playlist,
+        action="index"
+    )
 
     # Log CREATE in Cassandra
     await log_playlist_change(
@@ -236,6 +244,13 @@ async def update_playlist(id: str, playlist: UpdatePlaylistModel = Body(...)):
             return_document=ReturnDocument.AFTER,
         )
         if update_result is not None:
+            # Sync to Elasticsearch
+            await sync_playlist_to_elasticsearch(
+                playlist_id=id,
+                playlist_data=update_result,
+                action="index"
+            )
+            
             # Invalidate caches
             await cache_manager.invalidate_playlist_cache(id)
 
@@ -271,6 +286,13 @@ async def delete_playlist(id: str):
     delete_result = await playlist_collection.delete_one({"_id": ObjectId(id)})
 
     if delete_result.deleted_count == 1:
+        # Sync to Elasticsearch
+        await sync_playlist_to_elasticsearch(
+            playlist_id=id,
+            playlist_data=None,
+            action="delete"
+        )
+        
         # Invalidate caches
         await cache_manager.invalidate_playlist_cache(id)
 
