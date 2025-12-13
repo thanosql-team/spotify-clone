@@ -1,6 +1,56 @@
-version: '3.8'
 
 services:
+  elasticsearch:
+    container_name: es01
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    # 8.x
+    environment: 
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "bootstrap.memory_lock=true"
+      - "discovery.type=single-node"
+      - "xpack.security.enabled=false"
+      - "xpack.security.enrollment.enabled=false"
+    
+    # 7.17.X
+    # environment: ['ES_JAVA_OPTS=-Xms2g -Xmx2g','bootstrap.memory_lock=true','discovery.type=single-node']
+
+    ports:
+      - 9200:9200
+    networks:
+      - elastic
+      - spotify-network
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q 'green\\|yellow'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kib01
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      XPACK_APM_SERVICEMAPENABLED: "true"
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: d1a66dfd-c4d3-4a0a-8290-2abcb83ab3aa
+      LOGGING_ROOT_LEVEL: error
+    ports:
+      - 5601:5601
+    networks:
+      - elastic
+      - spotify-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
   # Redis service
   redis:
     image: redis:latest
@@ -20,12 +70,14 @@ services:
 
   # Cassandra service
   cassandra:
-    image: cassandra:5.0
+    image: cassandra:4.1
     container_name: spotify-cassandra
     ports:
       - "9042:9042"
     environment:
       - CASSANDRA_CLUSTER_NAME=SpotifyCluster
+      - MAX_HEAP_SIZE=512M
+      - HEAP_NEWSIZE=128M
     volumes:
       - cassandra-data:/var/lib/cassandra
     healthcheck:
@@ -45,7 +97,7 @@ services:
       - "7687:7687"  # Bolt protocol
     environment:
       - NEO4J_AUTH=neo4j/password123
-      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_PLUGINS='["apoc"]'
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*
     volumes:
       - neo4j-data:/data
@@ -73,6 +125,8 @@ services:
       - NEO4J_URI=bolt://neo4j:7687
       - NEO4J_USER=neo4j
       - NEO4J_PASSWORD=password123
+      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_PORT=9200
     depends_on:
       redis:
         condition: service_healthy
@@ -80,19 +134,24 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     volumes:
       - ./backend/1-mongodb-app:/app/1-mongodb-app
     networks:
       - spotify-network
     # use uvicorn explicitly to ensure FastAPI loads correctly
     command: uvicorn 1-mongodb-app.main:app --host 0.0.0.0 --port 8000 --reload
+  
 
 volumes:
   redis-data:
   cassandra-data:
   neo4j-data:
   neo4j-logs:
+  elasticsearch-data:
 
 networks:
   spotify-network:
     driver: bridge
+  elastic:

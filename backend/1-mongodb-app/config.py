@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = "password"
     
+    # Elasticsearch configuration
+    elasticsearch_host: str = "localhost"
+    elasticsearch_port: int = 9200
+    elasticsearch_user: str = ""
+    elasticsearch_password: str = ""
+    
     db_name: str = "spotify-clone"
     
     # Cache TTL time (SECS)
