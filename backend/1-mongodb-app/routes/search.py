@@ -51,7 +51,8 @@ class SearchResponse(BaseModel):
 async def unified_search(
     q: str = Query(..., description="Search query", min_length=1),
     entity: EntityType = Query(EntityType.ALL, description="Entity type to search (song, album, playlist, user, or all)"),
-    size: int = Query(20, description="Number of results", ge=1, le=100)
+    size: int = Query(20, description="Number of results", ge=1, le=100),
+    fuzzy: bool = Query(True, description="Enable fuzzy matching for typo tolerance")
 ):
     """
     Unified search across all entities or a specific entity type.
@@ -60,18 +61,25 @@ async def unified_search(
     - Search all entities at once or filter by type
     - Searches genre field for songs automatically
     - Case-insensitive search
-    - Smart fuzziness (disabled for short queries)
-    - Relevance-based sorting
+    - Smart fuzziness (configurable, disabled for very short queries)
+    - Relevance-based sorting with cross-index normalization
     
     Examples:
     - /search?q=love&entity=all
     - /search?q=rock&entity=song (searches in name, artist, album, AND genre)
     - /search?q=taylor&entity=album
+    - /search?q=miller&fuzzy=false (exact matching)
     """
     es = await get_elasticsearch()
     
     # Determine fuzziness based on query length
-    fuzziness = "AUTO:3,6" if len(q) >= 3 else None
+    # AUTO:4,7 means: edit distance 1 for terms 4-6 chars, edit distance 2 for 7+ chars
+    # This is less aggressive than AUTO:3,6 and reduces false positives
+    fuzziness = None
+    if fuzzy and len(q) >= 4:
+        fuzziness = "AUTO:4,7"
+    elif fuzzy and len(q) >= 3:
+        fuzziness = "1"  # Only 1 edit for short queries
     
     all_results = []
     
@@ -85,18 +93,39 @@ async def unified_search(
     # Search songs
     if EntityType.SONG in search_entities:
         try:
-            # Search across all song fields including genre
-            songs_query = {
-                "query": {
-                    "multi_match": {
-                        "query": q,
-                        "fields": ["name^3", "artist^2", "album_name", "genre^2"],
-                        "type": "best_fields"
-                    }
+            # Build query with optional fuzziness
+            must_clause = {
+                "multi_match": {
+                    "query": q,
+                    "fields": ["name^4", "artist^3", "album_name^1.5", "genre^2"],
+                    "type": "best_fields",
+                    "operator": "or",
+                    "minimum_should_match": "50%"
                 }
             }
             if fuzziness:
-                songs_query["query"]["multi_match"]["fuzziness"] = fuzziness
+                must_clause["multi_match"]["fuzziness"] = fuzziness
+            
+            # Use function_score to normalize and boost exact matches
+            songs_query = {
+                "query": {
+                    "function_score": {
+                        "query": must_clause,
+                        "functions": [
+                            {
+                                "filter": {"match_phrase": {"name": {"query": q}}},
+                                "weight": 3
+                            },
+                            {
+                                "filter": {"term": {"name.keyword": q.lower()}},
+                                "weight": 5
+                            }
+                        ],
+                        "score_mode": "sum",
+                        "boost_mode": "multiply"
+                    }
+                }
+            }
             
             songs = await es.search("songs", songs_query, size=size)
             
@@ -116,17 +145,32 @@ async def unified_search(
     # Search albums
     if EntityType.ALBUM in search_entities:
         try:
-            albums_query = {
-                "query": {
-                    "multi_match": {
-                        "query": q,
-                        "fields": ["album_name^3", "artist_name^2"],
-                        "type": "best_fields"
-                    }
+            albums_must = {
+                "multi_match": {
+                    "query": q,
+                    "fields": ["album_name^4", "artist_name^2"],
+                    "type": "best_fields",
+                    "operator": "or"
                 }
             }
             if fuzziness:
-                albums_query["query"]["multi_match"]["fuzziness"] = fuzziness
+                albums_must["multi_match"]["fuzziness"] = fuzziness
+            
+            albums_query = {
+                "query": {
+                    "function_score": {
+                        "query": albums_must,
+                        "functions": [
+                            {
+                                "filter": {"match_phrase": {"album_name": {"query": q}}},
+                                "weight": 3
+                            }
+                        ],
+                        "score_mode": "sum",
+                        "boost_mode": "multiply"
+                    }
+                }
+            }
             
             albums = await es.search("albums", albums_query, size=size)
             
@@ -144,17 +188,32 @@ async def unified_search(
     # Search playlists
     if EntityType.PLAYLIST in search_entities:
         try:
-            playlists_query = {
-                "query": {
-                    "multi_match": {
-                        "query": q,
-                        "fields": ["playlist_name^2"],
-                        "type": "best_fields"
-                    }
+            playlists_must = {
+                "multi_match": {
+                    "query": q,
+                    "fields": ["playlist_name^3"],
+                    "type": "best_fields",
+                    "operator": "or"
                 }
             }
             if fuzziness:
-                playlists_query["query"]["multi_match"]["fuzziness"] = fuzziness
+                playlists_must["multi_match"]["fuzziness"] = fuzziness
+            
+            playlists_query = {
+                "query": {
+                    "function_score": {
+                        "query": playlists_must,
+                        "functions": [
+                            {
+                                "filter": {"match_phrase": {"playlist_name": {"query": q}}},
+                                "weight": 3
+                            }
+                        ],
+                        "score_mode": "sum",
+                        "boost_mode": "multiply"
+                    }
+                }
+            }
             
             playlists = await es.search("playlists", playlists_query, size=size)
             
@@ -168,20 +227,43 @@ async def unified_search(
         except Exception as e:
             pass  # Index might not exist
     
-    # Search users
+    # Search users - higher boost for exact name/surname matches
     if EntityType.USER in search_entities:
         try:
-            users_query = {
-                "query": {
-                    "multi_match": {
-                        "query": q,
-                        "fields": ["username^3", "name^2", "surname^2", "email"],
-                        "type": "best_fields"
-                    }
+            users_must = {
+                "multi_match": {
+                    "query": q,
+                    "fields": ["username^3", "name^4", "surname^4", "email"],
+                    "type": "best_fields",
+                    "operator": "or"
                 }
             }
             if fuzziness:
-                users_query["query"]["multi_match"]["fuzziness"] = fuzziness
+                users_must["multi_match"]["fuzziness"] = fuzziness
+            
+            users_query = {
+                "query": {
+                    "function_score": {
+                        "query": users_must,
+                        "functions": [
+                            {
+                                "filter": {"match_phrase": {"surname": {"query": q}}},
+                                "weight": 5
+                            },
+                            {
+                                "filter": {"match_phrase": {"name": {"query": q}}},
+                                "weight": 4
+                            },
+                            {
+                                "filter": {"match_phrase": {"username": {"query": q}}},
+                                "weight": 3
+                            }
+                        ],
+                        "score_mode": "max",
+                        "boost_mode": "multiply"
+                    }
+                }
+            }
             
             users = await es.search("users", users_query, size=size)
             
