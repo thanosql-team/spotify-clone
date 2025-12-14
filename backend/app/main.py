@@ -1,14 +1,14 @@
 from fastapi import FastAPI
 
 from .routes import albums, playlists, songs, users, graph, search
-from . import change_logs
-from .dependencies import init_cache, close_cache
-from .dependencies_cassandra import get_cassandra_session
-from .dependencies_neo4j import init_neo4j, close_neo4j
-from .dependencies_elasticsearch import init_elasticsearch, close_elasticsearch
+from .services import change_logs
+from .core.dependencies import init_cache, close_cache
+from .core.dependencies_cassandra import get_cassandra_session
+from .core.dependencies_neo4j import init_neo4j, close_neo4j
+from .core.dependencies_elasticsearch import init_elasticsearch, close_elasticsearch
 
 def main():
-    print("Hello from 1-mongodb-app!")
+    print("Hello from app!")
 
 app = FastAPI()
 

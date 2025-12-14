@@ -6,7 +6,7 @@ Automatically syncs CRUD operations from MongoDB to Elasticsearch for full-text 
 import logging
 from typing import Optional, Dict, Any
 
-from .dependencies_elasticsearch import get_elasticsearch
+from ..core.dependencies_elasticsearch import get_elasticsearch
 
 logger = logging.getLogger(__name__)
 

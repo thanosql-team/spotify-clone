@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Literal
 from enum import Enum
 
-from ..dependencies_elasticsearch import get_elasticsearch
+from ..core.dependencies_elasticsearch import get_elasticsearch
 
 router = APIRouter(
     prefix="/search",
@@ -65,9 +65,10 @@ async def unified_search(
     - Relevance-based sorting with cross-index normalization
     
     Examples:
-    - /search?q=love&entity=all
+    - /search?q=shadow&entity=all
     - /search?q=rock&entity=song (searches in name, artist, album, AND genre)
-    - /search?q=taylor&entity=album
+    - /search?q=jane&entity=album
+    - /search?q=retro&entity=playlist
     - /search?q=miller&fuzzy=false (exact matching)
     """
     es = await get_elasticsearch()

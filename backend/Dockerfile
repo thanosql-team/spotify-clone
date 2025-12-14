@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir uv && \
     uv pip install --system -r pyproject.toml
 
 # Copy the entire backend code
-COPY 1-mongodb-app/ ./1-mongodb-app/
+COPY app/ ./app/
 
 # Expose port
 EXPOSE 8000
@@ -27,4 +27,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/ || exit 1
 
 # Run FastAPI
-CMD ["fastapi", "run", "1-mongodb-app/main.py", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["fastapi", "dev", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]

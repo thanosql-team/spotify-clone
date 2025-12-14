@@ -8,7 +8,7 @@ from neo4j import GraphDatabase, AsyncGraphDatabase
 from typing import Optional
 import logging
 
-from .config import Settings
+from ..config import Settings
 
 logger = logging.getLogger(__name__)
 

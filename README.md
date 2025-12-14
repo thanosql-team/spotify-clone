@@ -23,7 +23,7 @@ Update changes:
 
 You should see something similar to:
 
-    WARNING:  WatchFiles detected changes in '1-mongodb-app/change_logs.py'. Reloading...
+    WARNING:  WatchFiles detected changes in 'app/change_logs.py'. Reloading...
     INFO:     Shutting down
     INFO:     Waiting for application shutdown.
     INFO:     Application shutdown complete.

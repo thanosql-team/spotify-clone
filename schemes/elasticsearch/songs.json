@@ -1,0 +1,44 @@
+{
+  "index": "songs",
+  "mappings": {
+    "properties": {
+      "album_name": {
+        "type": "text"
+      },
+      "artist": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword"
+          }
+        },
+        "analyzer": "standard"
+      },
+      "duration": {
+        "type": "integer"
+      },
+      "genre": {
+        "type": "keyword"
+      },
+      "name": {
+        "type": "text",
+        "fields": {
+          "autocomplete": {
+            "type": "text",
+            "analyzer": "autocomplete"
+          },
+          "keyword": {
+            "type": "keyword"
+          }
+        },
+        "analyzer": "standard"
+      },
+      "release_year": {
+        "type": "integer"
+      },
+      "song_id": {
+        "type": "keyword"
+      }
+    }
+  }
+}

@@ -137,12 +137,9 @@ services:
       elasticsearch:
         condition: service_healthy
     volumes:
-      - ./backend/1-mongodb-app:/app/1-mongodb-app
+      - ./backend/app:/app/app
     networks:
       - spotify-network
-    # use uvicorn explicitly to ensure FastAPI loads correctly
-    command: uvicorn 1-mongodb-app.main:app --host 0.0.0.0 --port 8000 --reload
-  
 
 volumes:
   redis-data:
