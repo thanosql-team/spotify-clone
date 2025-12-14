@@ -8,9 +8,9 @@ from typing_extensions import Annotated
 from bson import ObjectId
 from pymongo import ReturnDocument
 
-from ..dependencies import db, cache_manager, get_settings
-from ..change_logger import log_album_change
-from ..elasticsearch_sync import sync_album_to_elasticsearch
+from ..core.dependencies import db, cache_manager, get_settings
+from ..services.change_logger import log_album_change
+from ..services.elasticsearch_sync import sync_album_to_elasticsearch
 
 router = APIRouter(
     prefix="/albums",

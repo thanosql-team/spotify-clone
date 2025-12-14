@@ -8,8 +8,8 @@ from typing_extensions import Annotated
 from bson import ObjectId
 from pymongo import ReturnDocument
 
-from ..dependencies import db, cache_manager, get_settings
-from ..elasticsearch_sync import sync_song_to_elasticsearch
+from ..core.dependencies import db, cache_manager, get_settings
+from ..services.elasticsearch_sync import sync_song_to_elasticsearch
 
 router = APIRouter(
     prefix="/songs",

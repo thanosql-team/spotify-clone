@@ -1,6 +1,6 @@
 from functools import lru_cache
 from motor.motor_asyncio import AsyncIOMotorClient
-from . import config
+from .. import config
 from .cache_manager import CacheManager
 import asyncio
 

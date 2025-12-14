@@ -11,16 +11,18 @@ It handles the following collections:
 
 import asyncio
 import logging
+import time
 from typing import List, Dict, Any
 from bson import ObjectId
 
-from .dependencies import db
-from .dependencies_elasticsearch import init_elasticsearch, close_elasticsearch, get_elasticsearch
+from ..core.dependencies import db
+from ..core.dependencies_elasticsearch import init_elasticsearch, close_elasticsearch, get_elasticsearch
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(levelname)s - %(message)s',
+    force=True
 )
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,52 @@ def convert_objectid_to_str(doc: Dict[str, Any]) -> Dict[str, Any]:
             ]
     
     return doc_copy
+
+
+async def clear_all_elasticsearch_indexes():
+    """Clear all data from all Elasticsearch indexes used for migration"""
+    es = await get_elasticsearch()
+    
+    logger.info("Clearing all existing Elasticsearch indexes...")
+    
+    try:
+        # Get all indexes dynamically from Elasticsearch
+        # Exclude system indexes (those starting with .)
+        all_indexes = await es.client.cat.indices(format="json")
+        user_indexes = [idx["index"] for idx in all_indexes if not idx["index"].startswith(".")]
+        
+        if not user_indexes:
+            logger.info("  ℹ No user indexes found - this is a fresh Elasticsearch instance")
+            logger.info("  ✓ Nothing to clear\n")
+            return
+        
+        logger.info(f"  Found {len(user_indexes)} user index(es): {', '.join(user_indexes)}")
+        
+        for index_name in user_indexes:
+            try:
+                # Check document count before clearing
+                count_result = await es.client.count(index=index_name)
+                doc_count = count_result["count"]
+                
+                if doc_count == 0:
+                    logger.info(f"  - Index '{index_name}' is already empty (0 documents)")
+                else:
+                    logger.info(f"  - Clearing '{index_name}' index ({doc_count} documents)...")
+                    await es.client.delete_by_query(
+                        index=index_name,
+                        body={"query": {"match_all": {}}}
+                    )
+                    await es.client.indices.refresh(index=index_name)
+                    logger.info(f"    ✓ Cleared {doc_count} documents from '{index_name}'")
+            except Exception as e:
+                logger.error(f"  ✗ Error clearing index '{index_name}': {e}")
+                raise
+        
+        logger.info("✓ All indexes cleared\n")
+        
+    except Exception as e:
+        logger.error(f"  ✗ Error fetching indexes: {e}")
+        raise
 
 
 async def migrate_songs():
@@ -253,9 +301,12 @@ async def verify_migration():
 
 async def main():
     """Main migration function"""
+    start_time = time.time()
+    
     try:
         logger.info("=" * 60)
         logger.info("MongoDB to Elasticsearch Migration")
+        logger.info("This will clear all existing Elasticsearch data and restore from MongoDB")
         logger.info("=" * 60)
         
         # Initialize Elasticsearch
@@ -263,17 +314,26 @@ async def main():
         await init_elasticsearch()
         logger.info("✓ Elasticsearch connected\n")
         
+        # Clear all indexes first (bulk operation)
+        await clear_all_elasticsearch_indexes()
+        
         # Run migrations
+        migration_start = time.time()
         await migrate_songs()
         await migrate_albums()
         await migrate_playlists()
         await migrate_users()
+        migration_duration = time.time() - migration_start
         
         # Verify migration
         await verify_migration()
         
+        total_duration = time.time() - start_time
+        
         logger.info("\n" + "=" * 60)
         logger.info("Migration completed successfully!")
+        logger.info(f"Data migration time: {migration_duration:.2f} seconds")
+        logger.info(f"Total execution time: {total_duration:.2f} seconds")
         logger.info("=" * 60)
         
     except Exception as e:

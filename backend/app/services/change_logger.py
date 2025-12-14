@@ -1,6 +1,6 @@
 from datetime import datetime
 import json
-from .dependencies_cassandra import session
+from ..core.dependencies_cassandra import session
 from bson import ObjectId
 
 def json_safe(data):

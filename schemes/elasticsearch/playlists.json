@@ -1,0 +1,25 @@
+{
+  "index": "playlists",
+  "mappings": {
+    "properties": {
+      "playlist_id": {
+        "type": "keyword"
+      },
+      "playlist_name": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword"
+          }
+        },
+        "analyzer": "standard"
+      },
+      "song_count": {
+        "type": "integer"
+      },
+      "user_id": {
+        "type": "keyword"
+      }
+    }
+  }
+}

@@ -14,7 +14,7 @@ RELATIONSHIPS:
 from fastapi import APIRouter, HTTPException, Query, status
 from bson import ObjectId
 
-from ..dependencies_neo4j import get_neo4j
+from ..core.dependencies_neo4j import get_neo4j
 
 router = APIRouter(
     prefix="/graph",
@@ -33,7 +33,7 @@ async def recommend_songs_for_playlist(
     Finds songs with matching genres and artists from the playlist,
     ranked by relevance (artist match > genre match).
     """
-    from ..dependencies import db
+    from ..core.dependencies import db
     neo4j = await get_neo4j()
     playlist_collection = db.get_collection("playlists")
     
@@ -221,7 +221,7 @@ async def sync_playlist_to_neo4j(playlist_id: str):
     """
     Sync a playlist and create LISTENED_TO relationships.
     """
-    from ..dependencies import db
+    from ..core.dependencies import db
     neo4j = await get_neo4j()
     
     playlist_collection = db.get_collection("playlists")
@@ -274,7 +274,7 @@ async def sync_playlist_to_neo4j(playlist_id: str):
 
 @router.post("/sync-all-playlists")
 async def sync_all_playlists():
-    from ..dependencies import db
+    from ..core.dependencies import db
     neo4j = await get_neo4j()
 
     playlist_collection = db.get_collection("playlists")
@@ -307,7 +307,7 @@ async def get_graph_overview():
 @router.post("/sync-from-mongodb", status_code=status.HTTP_201_CREATED)
 async def sync_songs_from_mongodb():
     """Sync songs and users from MongoDB to Neo4j."""
-    from ..dependencies import db
+    from ..core.dependencies import db
     
     neo4j = await get_neo4j()
     song_collection = db.get_collection("songs")

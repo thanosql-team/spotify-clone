@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query
 from datetime import datetime
 from typing import Optional
-from .dependencies_cassandra import session
+from ..core.dependencies_cassandra import session
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
