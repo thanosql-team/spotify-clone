@@ -1,69 +1,246 @@
-# spotify-clone
-University NoSQL course group project: a Spotify-like app handling large-scale data
+# Spotify Clone 🎵
 
-# Installation:
-If you haven't already set up **git**, see https://docs.github.com/en/get-started/git-basics/set-up-git
+A full-stack Spotify-like application built with modern NoSQL databases for a university NoSQL course project. This application demonstrates the use of multiple database technologies including MongoDB, Redis, Cassandra, Neo4j, and Elasticsearch.
 
-For setting up the environment, see the **Setting up the environment** section
+## 🚀 Quick Start
 
-## Running the Program
+### Prerequisites
+- Docker and Docker Compose
+- Python 3.13+ (for local development)
+- UV package manager (recommended for Python)
 
-Install dependencies:  
-* In terminal run `uv sync`
+### Environment Setup
 
-Got to the root: 
-* Go to this folder in terminal `..\Github\spotify-clone`
+Create a `.env` file in the root directory:
 
-Start the full stack: 
-* Once in the right root run `docker compose up -d`
+```env
+MONGODB_URL=your_mongodb_connection_string
+REDIS_URL=redis://localhost:6379/0
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password123
+ELASTICSEARCH_HOST=localhost
+ELASTICSEARCH_PORT=9200
+```
 
-Update changes:
+### Running with Docker Compose
 
-* Whenever you modify backend Python files, you should verify that the backend container detects and reloads the changes. Run `docker logs -f spotify-backend`
+Start all services:
 
-You should see something similar to:
+```bash
+docker-compose up -d
+```
 
-    WARNING:  WatchFiles detected changes in 'app/change_logs.py'. Reloading...
-    INFO:     Shutting down
-    INFO:     Waiting for application shutdown.
-    INFO:     Application shutdown complete.
-    INFO:     Finished server process [727]
-    INFO:     Started server process [791]
-    INFO:     Waiting for application startup.
-    INFO:     Application startup complete.
+This will start the following services:
 
-Stop and clean up containers:
-* Once you finish using the program run `docker compose down`
+| Service | Port(s) | URL/Access |
+|---------|---------|------------|
+| **FastAPI Backend** | 8000 | `http://localhost:8000` |
+| **Elasticsearch** | 9200 | `http://localhost:9200` |
+| **Kibana** | 5601 | `http://localhost:5601` |
+| **Redis** | 6379 | `localhost:6379` |
+| **Cassandra** | 9042 | `localhost:9042` |
+| **Neo4j Browser** | 7474 | `http://localhost:7474` |
+| **Neo4j Bolt** | 7687 | `bolt://localhost:7687` |
 
-**Important Note — Avoid Data Loss & Cassandra Corruption**
+### Initial Setup
 
-Cassandra requires a clean and graceful shutdown to ensure data integrity.
-Always run `docker compose down` before closing your environment or powering off your machine.
+After starting the services, migrate data to Elasticsearch:
 
-## Setting up environment
+```bash
+cd backend
+uv run python -m app.scripts.migrate_to_elasticsearch
+```
 
-### Installing project / dependencies
+### Access the API
 
-1. Follow https://docs.astral.sh/uv/getting-started/ to install and get introduced to **uv** - a Python package and project manager
+Once running, visit:
+- **API Documentation (Swagger)**: `http://localhost:8000/docs`
+- **Alternative Docs (ReDoc)**: `http://localhost:8000/redoc`
+- **Neo4j Browser**: `http://localhost:7474` (user: `neo4j`, password: `password123`)
+- **Kibana Dashboard**: `http://localhost:5601`
 
-1. See https://docs.astral.sh/uv/getting-started/installation/#shell-autocompletion for getting autocompletion in your terminal for uv and uvx commands
+## 🏗️ Architecture
 
-1. Make sure uv is updated to the latest version:\
-`uv self update`
+### Backend
+- **Framework**: FastAPI (Python 3.13)
+- **API**: RESTful API with automatic OpenAPI documentation
 
-1. Change current directory to the project folder:\
-`cd assignments/1-mongodb-app`
+### Databases
+- **MongoDB**: Primary database for storing users, songs, albums, and playlists
+- **Redis**: Caching layer for improved performance
+- **Cassandra**: Distributed storage for change logs and time-series data
+- **Neo4j**: Graph database for relationships and recommendations
+- **Elasticsearch**: Full-text search engine for songs, albums, playlists, and users
 
-1. Update the project's environment:\
-`uv sync`
+## ✨ Features
 
-1. `uv run fastapi dev` should then successfully run fastapi, https://fastapi.tiangolo.com/, which would automatically locate the modules in the project's working directory
+### Core Functionality
+- **Users**: Create, retrieve, update, and delete user profiles
+- **Songs**: Complete CRUD operations for song management
+- **Albums**: Album management with song associations
+- **Playlists**: Create and manage custom playlists
 
-### Linter/formatter
+### Advanced Features
+- **Full-Text Search**: Fast search across songs, albums, playlists, and users using Elasticsearch
+- **Graph Recommendations**: 
+  - Playlist-based recommendations using collaborative filtering
+  - Deep recommendations based on user listening patterns
+- **Change Logs**: Track all database changes with Cassandra
+- **Caching**: Automatic caching with Redis for frequently accessed data
+- **Real-time Sync**: Synchronize data between MongoDB and Neo4j for graph operations
 
-Ruff: see https://docs.astral.sh/ruff/editors/setup/ to setup ruff in your Python editor
+## 📚 API Documentation
 
-### Type checking
+Once the backend is running, visit:
+- **Interactive API Docs (Swagger)**: `http://localhost:8000/docs`
+- **Alternative API Docs (ReDoc)**: `http://localhost:8000/redoc`
 
-Pylance: see https://docs.pydantic.dev/latest/integrations/visual_studio_code/#configure-your-environment to set up Pylance in VSCode (set the Type Checking Mode to `basic`), or equivalently set it up in your Python editor
-For setting up the environment, see the appropriate project's, located in assignments/, README.md
+### Main Endpoints
+
+#### Songs
+- `POST /songs` - Create a new song
+- `GET /songs` - List all songs
+- `GET /songs/{id}` - Get a specific song
+- `GET /songs/album/{album_id}` - Get songs by album
+- `PUT /songs/{id}` - Update a song
+- `DELETE /songs/{id}` - Delete a song
+
+#### Playlists
+- `POST /playlists` - Create a new playlist
+- `GET /playlists` - List all playlists
+- `GET /playlists/{id}` - Get a specific playlist
+- `PUT /playlists/{id}` - Update a playlist
+- `DELETE /playlists/{id}` - Delete a playlist
+
+#### Users
+- `POST /users` - Create a new user
+- `GET /users` - List all users
+- `GET /users/{id}` - Get a specific user
+
+#### Albums
+- `POST /albums` - Create a new album
+- `GET /albums` - List all albums
+- `GET /albums/{id}` - Get a specific album
+
+#### Search
+- `GET /search?q={query}&type={type}` - Search across songs, albums, playlists, and users
+  - Types: `song`, `album`, `playlist`, `user`, or `all`
+
+#### Graph/Recommendations
+- `GET /graph/recommendations/playlist/{playlist_id}` - Get recommendations based on a playlist
+- `GET /graph/recommendations/deep/{user_id}` - Get deep recommendations for a user
+- `POST /graph/sync-playlist/{playlist_id}` - Sync a playlist to Neo4j
+- `POST /graph/sync-all-playlists` - Sync all playlists to Neo4j
+- `POST /graph/sync-from-mongodb` - Sync all data from MongoDB to Neo4j
+- `GET /graph/overview` - Get graph database statistics
+
+#### Change Logs
+- `GET /change-logs` - List all change logs
+- `GET /change-logs/entity/{entity_type}` - Get changes for a specific entity type
+
+## 🗄️ Database Schemas
+
+### MongoDB Collections
+- **users**: User profiles and metadata
+- **songs**: Song information (title, artist, album, duration, etc.)
+- **albums**: Album details and track listings
+- **playlists**: User playlists with song references
+
+### Cassandra Keyspace
+- **spotify_logs**: Change log entries with timestamps
+
+### Neo4j Graph
+- **Nodes**: User, Song, Playlist, Album, Artist, Genre
+- **Relationships**: CREATED, CONTAINS, LISTENED_TO, BELONGS_TO
+
+### Elasticsearch Indices
+- **songs**: Full-text searchable song data
+- **albums**: Album search index
+- **playlists**: Playlist search index
+- **users**: User search index
+
+## 🛠️ Development Tools
+
+### Elasticsearch Management
+
+Check cluster health:
+```bash
+curl http://localhost:9200/_cluster/health?pretty
+```
+
+List all indices:
+```bash
+curl http://localhost:9200/_cat/indices?v
+```
+
+View Kibana dashboard:
+```
+http://localhost:5601
+```
+
+### Neo4j Browser
+
+Access Neo4j browser interface:
+```
+http://localhost:7474
+```
+
+Default credentials:
+- Username: `neo4j`
+- Password: `password123`
+
+### Reset Everything
+
+To start fresh with clean databases:
+```bash
+docker-compose down -v
+docker-compose up -d
+```
+
+## 📦 Dependencies
+
+### Backend
+- FastAPI - Modern web framework
+- Motor - Async MongoDB driver
+- PyMongo - MongoDB Python driver
+- Redis - Python Redis client
+- cassandra-driver - Cassandra Python driver
+- neo4j - Neo4j Python driver
+- elasticsearch[async] - Elasticsearch Python client
+- pydantic-settings - Settings management
+
+## 🎯 Project Structure
+
+```
+spotify-clone/
+├── backend/
+│   ├── app/
+│   │   ├── routes/          # API endpoints
+│   │   ├── services/        # Business logic
+│   │   ├── core/            # Dependencies & config
+│   │   ├── scripts/         # Utility scripts
+│   │   └── main.py          # FastAPI application
+│   ├── Dockerfile
+│   └── pyproject.toml
+├── schemes/                 # Database schema documentation
+├── docker-compose.yml
+└── README.md
+```
+
+## 🧪 Testing
+
+The application includes health checks for all services:
+- Backend: `http://localhost:8000/`
+- Elasticsearch: `http://localhost:9200/_cluster/health`
+- Redis: `redis-cli ping`
+- Neo4j: Browser health check
+- Cassandra: `cqlsh -e 'describe keyspaces'`
+
+## 📝 License
+
+This is a university course project.
+
+## 👥 Contributors
+
+NoSQL Course Group Project - 2025
